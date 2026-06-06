@@ -1,0 +1,85 @@
+"""FastAPI app: capture + deterministic queue routes (core, no LLM) + chat (SSE)."""
+from __future__ import annotations
+
+from pathlib import Path
+
+import httpx
+from fastapi import FastAPI
+from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+
+from . import schema
+from .core import claims, learning, sources
+
+_WEB = Path(__file__).parent / "web"
+
+
+class CaptureBody(BaseModel):
+    origin: str = "manual"
+    content: str | None = None
+    url: str | None = None
+    sensitivity: str = "personal"
+
+
+def _next_seq(vault: Path, subdir: str, prefix: str) -> int:
+    d = vault / subdir
+    return (len(list(d.glob(f"{prefix}-*.md"))) if d.exists() else 0) + 1
+
+
+def create_app(vault: Path) -> FastAPI:
+    vault = Path(vault)
+    app = FastAPI(title="Personal AI Wiki")
+
+    @app.post("/capture")
+    def capture(body: CaptureBody):
+        content = body.content
+        if body.url and not content:
+            html = httpx.get(body.url, follow_redirects=True, timeout=20).text
+            content = sources.html_to_markdown(html)
+        path = sources.create_source(
+            vault, origin=body.origin, content=content or "",
+            sensitivity=body.sensitivity, date_str=schema.today_str(),
+            seq=_next_seq(vault, "00_Inbox/raw", "source"), url=body.url,
+        )
+        return {"id": path.stem}
+
+    @app.get("/claims/pending")
+    def pending():
+        return claims.list_pending(vault)
+
+    @app.post("/claims/{cid}/approve")
+    def approve(cid: str):
+        p = claims.promote_claim(vault, cid, target_status="verified",
+                                 approved_by_human=True, date_str=schema.today_str())
+        return {"id": cid, "status": "verified", "path": str(p)}
+
+    @app.post("/claims/{cid}/reject")
+    def reject(cid: str):
+        p = claims.set_claim_status(vault, cid, status="rejected",
+                                    date_str=schema.today_str())
+        return {"id": cid, "status": "rejected", "path": str(p)}
+
+    @app.get("/reviews/due")
+    def due():
+        return learning.list_due_reviews(vault, schema.today_str())
+
+    @app.post("/reviews/{lid}/record")
+    def record(lid: str, passed: bool = True):
+        p = learning.record_review(vault, lid, passed=passed, today_str=schema.today_str())
+        return {"id": lid, "path": str(p)}
+
+    @app.get("/")
+    def home():
+        return FileResponse(_WEB / "index.html")
+
+    if _WEB.exists():
+        app.mount("/static", StaticFiles(directory=_WEB), name="static")
+
+    _attach_chat(app, vault)
+    return app
+
+
+def _attach_chat(app: FastAPI, vault: Path) -> None:
+    # Implemented in a later task.
+    pass
