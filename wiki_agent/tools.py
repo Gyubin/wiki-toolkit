@@ -6,7 +6,7 @@ from pathlib import Path
 from claude_agent_sdk import create_sdk_mcp_server, tool
 
 from . import schema
-from .core import claims, learning, sources, wiki
+from .core import claims, git, learning, projects, sources, wiki
 
 WIKI_TOOL_NAMES = [
     "mcp__wiki__create_source", "mcp__wiki__triage_record",
@@ -15,6 +15,9 @@ WIKI_TOOL_NAMES = [
     "mcp__wiki__list_pending", "mcp__wiki__create_wiki_page",
     "mcp__wiki__create_learning_item", "mcp__wiki__list_due_reviews",
     "mcp__wiki__record_review",
+    "mcp__wiki__collect_git_session",
+    "mcp__wiki__create_session_summary",
+    "mcp__wiki__create_decision",
 ]
 
 
@@ -124,9 +127,48 @@ def build_wiki_server(vault: Path):
         )
         return _ok(f"recorded {p.stem}")
 
+    @tool("collect_git_session",
+          "Read a repo's diff/commits/changed files for base..head (read-only)",
+          {"repo": str, "base": str, "head": str})
+    async def collect_git_session(args):
+        s = git.collect_session(args["repo"], args["base"], args.get("head", "HEAD"))
+        text = (
+            "commits:\n" + "\n".join(f"- {c['sha'][:8]} {c['subject']}" for c in s["commits"])
+            + "\n\nchanged_files:\n" + "\n".join(s["changed_files"])
+            + "\n\ndiff:\n" + s["diff"][:20000]
+        )
+        return _ok(text)
+
+    @tool("create_session_summary",
+          "Write a session summary under 01_Projects/<repo>/sessions (sensitivity=work)",
+          {"repo": str, "title": str, "body": str})
+    async def create_session_summary(args):
+        slug = projects.project_slug(args["repo"])
+        p = projects.create_session_summary(
+            vault, repo=args["repo"], title=args["title"], body=args["body"],
+            date_str=schema.today_str(),
+            seq=_next_seq(vault, f"01_Projects/{slug}/sessions", "session"),
+        )
+        return _ok(f"created {p.stem}")
+
+    @tool("create_decision",
+          "Write an ADR under 01_Projects/<repo>/decisions (sensitivity=work)",
+          {"repo": str, "title": str, "context": str, "decision": str,
+           "alternatives": str, "consequences": str})
+    async def create_decision(args):
+        slug = projects.project_slug(args["repo"])
+        p = projects.create_decision(
+            vault, repo=args["repo"], title=args["title"], context=args["context"],
+            decision=args["decision"], alternatives=args["alternatives"],
+            consequences=args["consequences"], date_str=schema.today_str(),
+            seq=_next_seq(vault, f"01_Projects/{slug}/decisions", "decision"),
+        )
+        return _ok(f"created {p.stem}")
+
     return create_sdk_mcp_server(
         name="wiki", version="0.1.0",
         tools=[create_source, triage_record, create_claim, find_similar_claim,
                promote_claim, set_claim_status, list_pending, create_wiki_page,
-               create_learning_item, list_due_reviews, record_review],
+               create_learning_item, list_due_reviews, record_review,
+               collect_git_session, create_session_summary, create_decision],
     )

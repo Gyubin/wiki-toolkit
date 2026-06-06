@@ -10,3 +10,10 @@ def test_tool_names_list():
     names = tools.WIKI_TOOL_NAMES
     assert "mcp__wiki__create_claim" in names
     assert "mcp__wiki__promote_claim" in names
+
+
+def test_wrap_tool_names_present():
+    names = tools.WIKI_TOOL_NAMES
+    assert "mcp__wiki__collect_git_session" in names
+    assert "mcp__wiki__create_session_summary" in names
+    assert "mcp__wiki__create_decision" in names
