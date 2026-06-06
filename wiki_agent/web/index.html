@@ -19,6 +19,7 @@
   <nav>
     <button data-tab="chat" class="active">Chat</button>
     <button data-tab="capture">Capture</button>
+    <button data-tab="wrap">Wrap</button>
     <button data-tab="verify">Verify</button>
     <button data-tab="review">Review</button>
   </nav>
@@ -33,6 +34,14 @@
       <input id="capUrl" style="width:60%" placeholder="또는 URL" />
       <button onclick="capture()">Capture → Inbox</button>
       <div id="capMsg"></div>
+    </section>
+    <section id="wrap" class="panel">
+      <input id="wrapRepo" style="width:60%" placeholder="repo 절대경로 (예: /Users/me/work/myrepo)" />
+      <input id="wrapBase" style="width:18%" placeholder="base (예: HEAD~1)" />
+      <input id="wrapHead" style="width:18%" placeholder="head (기본 HEAD)" />
+      <textarea id="wrapTranscript" placeholder="(선택) 코딩 에이전트 transcript"></textarea>
+      <button onclick="wrapRun()">Wrap</button>
+      <div id="wrapLog" style="white-space:pre-wrap;border:1px solid #ccc;padding:.5rem;min-height:6rem"></div>
     </section>
     <section id="verify" class="panel">
       <button onclick="loadPending()">새로고침</button>
@@ -55,6 +64,23 @@
       const log = document.getElementById('log');
       log.textContent += '\n> ' + prompt + '\n';
       const res = await fetch('/chat', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({prompt})});
+      const reader = res.body.getReader(); const dec = new TextDecoder();
+      while (true) { const {value, done} = await reader.read(); if (done) break;
+        dec.decode(value).split('\n').forEach(l => {
+          if (l.startsWith('data: ') && l !== 'data: [DONE]') log.textContent += l.slice(6);
+        });
+      }
+    }
+    async function wrapRun() {
+      const body = {
+        repo: document.getElementById('wrapRepo').value,
+        base: document.getElementById('wrapBase').value || 'HEAD~1',
+        head: document.getElementById('wrapHead').value || 'HEAD',
+        transcript: document.getElementById('wrapTranscript').value || null,
+      };
+      const log = document.getElementById('wrapLog');
+      log.textContent = 'wrapping...\n';
+      const res = await fetch('/wrap', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
       const reader = res.body.getReader(); const dec = new TextDecoder();
       while (true) { const {value, done} = await reader.read(); if (done) break;
         dec.decode(value).split('\n').forEach(l => {

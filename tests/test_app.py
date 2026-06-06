@@ -52,3 +52,9 @@ def test_chat_route_exists(vault):
     app = create_app(vault)
     routes = {r.path for r in app.routes}
     assert "/chat" in routes
+
+
+def test_wrap_route_exists(vault):
+    app = create_app(vault)
+    routes = {r.path for r in app.routes}
+    assert "/wrap" in routes

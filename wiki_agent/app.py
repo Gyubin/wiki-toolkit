@@ -86,11 +86,30 @@ def _attach_chat(app: FastAPI, vault: Path) -> None:
     class ChatBody(BaseModel):
         prompt: str
 
+    class WrapBody(BaseModel):
+        repo: str
+        base: str
+        head: str = "HEAD"
+        transcript: str | None = None
+
+    async def _stream(prompt: str):
+        async with WikiSession(vault) as session:
+            async for chunk in session.ask(prompt):
+                yield f"data: {chunk}\n\n"
+        yield "data: [DONE]\n\n"
+
     @app.post("/chat")
     async def chat(body: ChatBody):
-        async def stream():
-            async with WikiSession(vault) as session:
-                async for chunk in session.ask(body.prompt):
-                    yield f"data: {chunk}\n\n"
-            yield "data: [DONE]\n\n"
-        return StreamingResponse(stream(), media_type="text/event-stream")
+        return StreamingResponse(_stream(body.prompt), media_type="text/event-stream")
+
+    @app.post("/wrap")
+    async def wrap(body: WrapBody):
+        prompt = (
+            "Use the wrap subagent to wrap up this coding session. "
+            f"repo={body.repo}, range={body.base}..{body.head}. "
+            "First call collect_git_session, then produce a session summary, any ADRs, "
+            "generalized concept/pattern pages, and learning items."
+        )
+        if body.transcript:
+            prompt += f"\n\nTranscript (optional context):\n{body.transcript}"
+        return StreamingResponse(_stream(prompt), media_type="text/event-stream")
