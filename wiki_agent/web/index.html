@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>Personal AI Wiki</title>
+  <style>
+    body { font: 14px/1.5 system-ui, sans-serif; margin: 0; }
+    nav button { padding: .6rem 1rem; border: 0; background: #eee; cursor: pointer; }
+    nav button.active { background: #ddd; font-weight: 600; }
+    main { padding: 1rem; }
+    .panel { display: none; } .panel.active { display: block; }
+    #log { white-space: pre-wrap; border: 1px solid #ccc; padding: .5rem; min-height: 8rem; }
+    textarea { width: 100%; height: 6rem; }
+    .row { border-bottom: 1px solid #eee; padding: .4rem 0; }
+    button.act { margin-left: .5rem; }
+  </style>
+</head>
+<body>
+  <nav>
+    <button data-tab="chat" class="active">Chat</button>
+    <button data-tab="capture">Capture</button>
+    <button data-tab="verify">Verify</button>
+    <button data-tab="review">Review</button>
+  </nav>
+  <main>
+    <section id="chat" class="panel active">
+      <div id="log"></div>
+      <input id="prompt" style="width:80%" placeholder="이거 인제스트해줘 / X에 대해 답해줘" />
+      <button onclick="send()">Send</button>
+    </section>
+    <section id="capture" class="panel">
+      <textarea id="capContent" placeholder="대화/텍스트 붙여넣기"></textarea>
+      <input id="capUrl" style="width:60%" placeholder="또는 URL" />
+      <button onclick="capture()">Capture → Inbox</button>
+      <div id="capMsg"></div>
+    </section>
+    <section id="verify" class="panel">
+      <button onclick="loadPending()">새로고침</button>
+      <div id="pending"></div>
+    </section>
+    <section id="review" class="panel">
+      <button onclick="loadDue()">새로고침</button>
+      <div id="due"></div>
+    </section>
+  </main>
+  <script>
+    document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+      document.querySelectorAll('nav button').forEach(x => x.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      document.getElementById(b.dataset.tab).classList.add('active');
+    });
+    async function send() {
+      const prompt = document.getElementById('prompt').value;
+      const log = document.getElementById('log');
+      log.textContent += '\n> ' + prompt + '\n';
+      const res = await fetch('/chat', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({prompt})});
+      const reader = res.body.getReader(); const dec = new TextDecoder();
+      while (true) { const {value, done} = await reader.read(); if (done) break;
+        dec.decode(value).split('\n').forEach(l => {
+          if (l.startsWith('data: ') && l !== 'data: [DONE]') log.textContent += l.slice(6);
+        });
+      }
+    }
+    async function capture() {
+      const content = document.getElementById('capContent').value;
+      const url = document.getElementById('capUrl').value || null;
+      const r = await fetch('/capture', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({origin: 'manual', content, url})});
+      document.getElementById('capMsg').textContent = JSON.stringify(await r.json());
+    }
+    async function loadPending() {
+      const rows = await (await fetch('/claims/pending')).json();
+      document.getElementById('pending').innerHTML = rows.map(r =>
+        `<div class="row">${r.id}: ${r.claim}
+         <button class="act" onclick="approve('${r.id}')">승인</button>
+         <button class="act" onclick="reject('${r.id}')">거부</button></div>`).join('') || '없음';
+    }
+    async function approve(id) { await fetch(`/claims/${id}/approve`, {method: 'POST'}); loadPending(); }
+    async function reject(id) { await fetch(`/claims/${id}/reject`, {method: 'POST'}); loadPending(); }
+    async function loadDue() {
+      const rows = await (await fetch('/reviews/due')).json();
+      document.getElementById('due').innerHTML = rows.map(r =>
+        `<div class="row">${r.id}: ${r.topic} (${r.level})
+         <button class="act" onclick="rec('${r.id}',true)">통과</button>
+         <button class="act" onclick="rec('${r.id}',false)">실패</button></div>`).join('') || '없음';
+    }
+    async function rec(id, passed) { await fetch(`/reviews/${id}/record?passed=${passed}`, {method: 'POST'}); loadDue(); }
+  </script>
+</body>
+</html>
