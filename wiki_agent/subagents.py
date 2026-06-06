@@ -45,4 +45,13 @@ def build_subagents() -> dict[str, AgentDefinition]:
                 k in t for k in ("create_learning_item", "list_due_reviews", "record_review"))],
             model="claude-opus-4-8",
         ),
+        "wrap": AgentDefinition(
+            description="Wrap a coding session into session summary, ADRs, concepts, and learning.",
+            prompt=_p("wrap"),
+            tools=["Read", "Grep", "Glob", "Bash"] + [t for t in w if any(
+                k in t for k in ("collect_git_session", "create_session_summary",
+                                 "create_decision", "create_wiki_page", "create_claim",
+                                 "create_learning_item"))],
+            model="claude-opus-4-8",
+        ),
     }
