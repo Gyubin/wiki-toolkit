@@ -46,3 +46,9 @@ def test_due_reviews_route(vault):
     r = client.get("/reviews/due")
     assert r.status_code == 200
     assert len(r.json()) >= 1
+
+
+def test_chat_route_exists(vault):
+    app = create_app(vault)
+    routes = {r.path for r in app.routes}
+    assert "/chat" in routes

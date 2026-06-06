@@ -81,5 +81,16 @@ def create_app(vault: Path) -> FastAPI:
 
 
 def _attach_chat(app: FastAPI, vault: Path) -> None:
-    # Implemented in a later task.
-    pass
+    from .agent import WikiSession
+
+    class ChatBody(BaseModel):
+        prompt: str
+
+    @app.post("/chat")
+    async def chat(body: ChatBody):
+        async def stream():
+            async with WikiSession(vault) as session:
+                async for chunk in session.ask(body.prompt):
+                    yield f"data: {chunk}\n\n"
+            yield "data: [DONE]\n\n"
+        return StreamingResponse(stream(), media_type="text/event-stream")
