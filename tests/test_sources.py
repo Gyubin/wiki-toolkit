@@ -18,12 +18,13 @@ def test_create_source_personal(vault):
     assert "source-20260607-001" in log
 
 
-def test_create_source_refuses_work(vault):
-    with pytest.raises(PermissionError):
-        sources.create_source(
-            vault, origin="coding_agent", content="company code",
-            sensitivity="work", date_str="2026-06-07", seq=2,
-        )
+def test_create_source_tags_work(vault):
+    path = sources.create_source(
+        vault, origin="coding_agent", content="company code",
+        sensitivity="work", date_str="2026-06-07", seq=2,
+    )
+    meta, _ = schema.parse_doc(path.read_text(encoding="utf-8"))
+    assert meta["sensitivity"] == "work"
 
 
 def test_triage_record(vault):

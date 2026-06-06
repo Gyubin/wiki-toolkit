@@ -14,11 +14,6 @@ def make_can_use_tool(vault: Path):
                     return PermissionResultDeny(
                         message="verified requires human approval or evidence (principle 9)"
                     )
-        if tool_name == "mcp__wiki__create_source":
-            if input_data.get("sensitivity", "personal") != "personal":
-                return PermissionResultDeny(
-                    message="work/confidential content must go to the work vault"
-                )
         return PermissionResultAllow(updated_input=input_data)
 
     return can_use_tool

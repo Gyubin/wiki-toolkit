@@ -20,11 +20,11 @@ async def test_allow_approved_verified(vault):
 
 
 @pytest.mark.asyncio
-async def test_deny_work_source(vault):
+async def test_allow_work_source(vault):
     gate = permissions.make_can_use_tool(vault)
     res = await gate("mcp__wiki__create_source",
                      {"origin": "x", "content": "y", "sensitivity": "work"}, None)
-    assert res.behavior == "deny"
+    assert res.behavior == "allow"
 
 
 @pytest.mark.asyncio

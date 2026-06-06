@@ -31,7 +31,7 @@ def normalize_key(text: str, speaker: str | None = None) -> str:
 def create_claim(
     vault: Path, *, claim: str, claim_type: str, source_refs: list[str],
     date_str: str, seq: int, proposed_status: str | None = None,
-    speaker: str | None = None,
+    speaker: str | None = None, sensitivity: str = "personal",
 ) -> Path:
     schema.validate_claim_type(claim_type)
     cid = schema.make_id("claim", date_str, seq)
@@ -39,7 +39,8 @@ def create_claim(
         "type": "claim", "id": cid, "claim_type": claim_type,
         "status": "unverified", "proposed_status": proposed_status or "",
         "claim": claim, "speaker": speaker or "", "source_refs": source_refs,
-        "evidence_refs": [], "created": date_str, "updated": date_str,
+        "evidence_refs": [], "sensitivity": sensitivity,
+        "created": date_str, "updated": date_str,
     }
     path = Path(vault) / "10_Claims/pending" / f"{cid}.md"
     path.parent.mkdir(parents=True, exist_ok=True)

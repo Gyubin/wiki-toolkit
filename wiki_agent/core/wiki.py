@@ -20,12 +20,14 @@ def _slug(name: str) -> str:
 def create_wiki_page(
     vault: Path, *, name: str, page_type: str, body: str,
     claim_refs: list[str], date_str: str, domain: list[str] | None = None,
+    sensitivity: str = "personal",
 ) -> Path:
     if page_type not in schema.WIKI_PAGE_TYPES:
         raise ValueError(f"unknown page_type: {page_type}")
     meta = {
         "type": page_type, "name": name, "domain": domain or [],
-        "status": "draft", "created": date_str, "updated": date_str,
+        "status": "draft", "sensitivity": sensitivity,
+        "created": date_str, "updated": date_str,
         "claim_refs": claim_refs, "code_refs": [],
     }
     path = Path(vault) / "03_Resources" / _TYPE_DIR[page_type] / f"{_slug(name)}.md"

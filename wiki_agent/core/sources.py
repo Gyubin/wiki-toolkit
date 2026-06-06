@@ -15,10 +15,6 @@ def create_source(
 ) -> Path:
     if sensitivity not in schema.SENSITIVITIES:
         raise ValueError(f"unknown sensitivity: {sensitivity}")
-    if sensitivity != "personal":
-        raise PermissionError(
-            "work/confidential content must go to the work vault, not this personal vault"
-        )
     sid = schema.make_id("source", date_str, seq)
     meta = {
         "type": "source", "id": sid, "origin": origin,
@@ -28,7 +24,7 @@ def create_source(
     path = Path(vault) / "00_Inbox" / subdir / f"{sid}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(schema.render_doc(meta, body), encoding="utf-8")
-    index.append_log(vault, "ingest-log", f"captured {sid} from {origin}")
+    index.append_log(vault, "ingest-log", f"captured {sid} from {origin} [{sensitivity}]")
     return path
 
 
