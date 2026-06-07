@@ -6,7 +6,7 @@ from pathlib import Path
 from claude_agent_sdk import create_sdk_mcp_server, tool
 
 from . import schema
-from .core import claims, git, learning, projects, sources, wiki
+from .core import claims, git, learning, projects, search, sources, wiki
 
 WIKI_TOOL_NAMES = [
     "mcp__wiki__create_source", "mcp__wiki__triage_record",
@@ -18,6 +18,7 @@ WIKI_TOOL_NAMES = [
     "mcp__wiki__collect_git_session",
     "mcp__wiki__create_session_summary",
     "mcp__wiki__create_decision",
+    "mcp__wiki__search_wiki",
 ]
 
 
@@ -165,10 +166,22 @@ def build_wiki_server(vault: Path):
         )
         return _ok(f"created {p.stem}")
 
+    _search_index: dict = {}
+
+    @tool("search_wiki", "Hybrid semantic+lexical search over the vault",
+          {"query": str})
+    async def search_wiki(args):
+        if "idx" not in _search_index:
+            _search_index["idx"] = search.build_index(vault)
+        results = _search_index["idx"].query(args["query"], int(args.get("k", 8)))
+        text = "\n".join(f"- [{r['ref']}] {r['title']} (score {r['score']})"
+                         for r in results) or "no results"
+        return _ok(text)
+
     return create_sdk_mcp_server(
         name="wiki", version="0.1.0",
         tools=[create_source, triage_record, create_claim, find_similar_claim,
                promote_claim, set_claim_status, list_pending, create_wiki_page,
                create_learning_item, list_due_reviews, record_review,
-               collect_git_session, create_session_summary, create_decision],
+               collect_git_session, create_session_summary, create_decision, search_wiki],
     )

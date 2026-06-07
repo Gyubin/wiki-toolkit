@@ -34,7 +34,7 @@ def build_subagents() -> dict[str, AgentDefinition]:
         "answer": AgentDefinition(
             description="Answer from the wiki with epistemic status; feed insights back as unverified.",
             prompt=_p("answer"),
-            tools=["Read", "Grep", "Glob", "mcp__wiki__create_claim"],
+            tools=["Read", "Grep", "Glob", "mcp__wiki__create_claim", "mcp__wiki__search_wiki"],
             disallowedTools=["Write", "Edit"],
             model="claude-opus-4-8",
         ),

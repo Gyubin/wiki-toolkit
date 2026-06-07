@@ -7,3 +7,8 @@ def test_build_subagents_has_lint():
     assert "Write" not in (agents["lint"].tools or [])
     assert "Bash" not in (agents["lint"].tools or [])
     assert "Read" in agents["lint"].tools
+
+
+def test_answer_has_search():
+    agents = subagents.build_subagents()
+    assert "mcp__wiki__search_wiki" in agents["answer"].tools

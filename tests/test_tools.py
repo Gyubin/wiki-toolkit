@@ -17,3 +17,7 @@ def test_wrap_tool_names_present():
     assert "mcp__wiki__collect_git_session" in names
     assert "mcp__wiki__create_session_summary" in names
     assert "mcp__wiki__create_decision" in names
+
+
+def test_search_tool_name_present():
+    assert "mcp__wiki__search_wiki" in tools.WIKI_TOOL_NAMES
