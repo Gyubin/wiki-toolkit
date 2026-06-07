@@ -1,7 +1,7 @@
 import pytest
 
-from wiki_agent import schema
-from wiki_agent.core import wiki
+from wiki_agents import schema
+from wiki_agents.core import wiki
 
 
 def test_create_wiki_page(vault):

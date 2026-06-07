@@ -1,4 +1,4 @@
-from wiki_agent.core import claims, search
+from wiki_agents.core import claims, search
 
 _VOCAB = ["python", "typed", "react", "hook", "effect", "git", "commit", "search", "vector"]
 

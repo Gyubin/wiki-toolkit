@@ -19,7 +19,7 @@ for the code map and `docs/superpowers/` for the design history (ExecPlans).
 
 ## 4. Layering (enforced)
 - Imports flow upward only: `schema → core → tools/permissions → subagents → agent → app`.
-- `core/` stays **pure**: no `claude_agent_sdk`, `fastapi`, `uvicorn`. `schema.py` imports nothing from `wiki_agent`. Only `app.py` imports the web framework.
+- `core/` stays **pure**: no `claude_agent_sdk`, `fastapi`, `uvicorn`. `schema.py` imports nothing from `wiki_agents`. Only `app.py` imports the web framework.
 - `tests/test_architecture.py` fails on any violation. Run it before assuming a refactor is safe.
 
 ## 5. Workflow

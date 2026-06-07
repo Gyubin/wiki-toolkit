@@ -1,5 +1,5 @@
-from wiki_agent import schema
-from wiki_agent.core import claims, lint, wiki
+from wiki_agents import schema
+from wiki_agents.core import claims, lint, wiki
 
 
 def _seed(vault):

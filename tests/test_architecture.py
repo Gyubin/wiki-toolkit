@@ -2,7 +2,7 @@
 import ast
 from pathlib import Path
 
-PKG_ROOT = Path(__file__).resolve().parent.parent / "wiki_agent"
+PKG_ROOT = Path(__file__).resolve().parent.parent / "wiki_agents"
 FORBIDDEN_EXTERNAL = {"claude_agent_sdk", "fastapi", "uvicorn", "starlette"}
 ORCH = {"tools", "agent", "app", "subagents", "permissions", "__main__"}
 
@@ -43,7 +43,7 @@ def core_violations(source: str, pkg: str) -> list[str]:
         if m.split(".")[0] in FORBIDDEN_EXTERNAL:
             bad.add(m)
         for orch in ORCH:
-            if m == f"wiki_agent.{orch}" or m.startswith(f"wiki_agent.{orch}."):
+            if m == f"wiki_agents.{orch}" or m.startswith(f"wiki_agents.{orch}."):
                 bad.add(m)
     return sorted(bad)
 
@@ -60,7 +60,7 @@ def test_core_is_pure():
 def test_schema_is_base():
     f = PKG_ROOT / "schema.py"
     refs = referenced_modules(f.read_text(encoding="utf-8"), _pkg_of(f))
-    assert not [m for m in refs if m.split(".")[0] == "wiki_agent"], refs
+    assert not [m for m in refs if m.split(".")[0] == "wiki_agents"], refs
 
 
 def test_only_app_imports_web():
@@ -77,8 +77,8 @@ def test_only_app_imports_web():
 
 def test_checker_catches_violation():
     assert "claude_agent_sdk" in core_violations(
-        "from claude_agent_sdk import tool\nfrom .. import schema\n", "wiki_agent.core")
-    assert any("wiki_agent.tools" in m for m in core_violations(
-        "from ..tools import WIKI_TOOL_NAMES\n", "wiki_agent.core"))
+        "from claude_agent_sdk import tool\nfrom .. import schema\n", "wiki_agents.core")
+    assert any("wiki_agents.tools" in m for m in core_violations(
+        "from ..tools import WIKI_TOOL_NAMES\n", "wiki_agents.core"))
     assert core_violations("from .. import schema\nfrom . import index\n",
-                           "wiki_agent.core") == []
+                           "wiki_agents.core") == []

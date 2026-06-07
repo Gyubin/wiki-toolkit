@@ -1,6 +1,6 @@
 import pytest
 
-from wiki_agent import schema
+from wiki_agents import schema
 
 
 def test_enums_match_design():

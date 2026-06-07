@@ -1,4 +1,4 @@
-from wiki_agent import agent
+from wiki_agents import agent
 
 
 def test_build_options(vault):

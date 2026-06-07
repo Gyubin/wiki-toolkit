@@ -1,6 +1,6 @@
 import pytest
 
-from wiki_agent import permissions
+from wiki_agents import permissions
 
 
 @pytest.mark.asyncio

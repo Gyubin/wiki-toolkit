@@ -49,7 +49,7 @@ violation fails the test, not a code review.
 ## What is NOT here (constraints by absence)
 
 - **`core/` has no LLM or web dependency.** No `claude_agent_sdk`, `fastapi`, `uvicorn`. Core is pure and unit-tested without a model or server. (Enforced.)
-- **`schema.py` imports nothing from `wiki_agent`.** It is the base. (Enforced.)
+- **`schema.py` imports nothing from `wiki_agents`.** It is the base. (Enforced.)
 - **Only `app.py` imports the web framework.** (Enforced.)
 - **No second "work vault."** Work/confidential content lives in the same vault under `01_Projects/<repo>/`, distinguished by a `sensitivity` frontmatter tag — not refused.
 - **No external embedding API.** Embeddings are local (fastembed); vault content never leaves the machine.

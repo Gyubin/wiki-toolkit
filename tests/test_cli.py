@@ -2,7 +2,7 @@
 never hardcode cwd. Guards the code/vault separation (harness engineering)."""
 from pathlib import Path
 
-import wiki_agent.__main__ as cli
+import wiki_agents.__main__ as cli
 
 
 def test_resolve_vault_explicit_wins(monkeypatch):

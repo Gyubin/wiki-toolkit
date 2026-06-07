@@ -1,4 +1,4 @@
-from wiki_agent import subagents
+from wiki_agents import subagents
 
 
 def test_build_subagents_has_lint():

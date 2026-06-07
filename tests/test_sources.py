@@ -1,5 +1,5 @@
-from wiki_agent import schema
-from wiki_agent.core import sources
+from wiki_agents import schema
+from wiki_agents.core import sources
 
 
 def test_create_source_personal(vault):
