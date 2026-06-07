@@ -1,4 +1,5 @@
 import pytest
+
 from wiki_agent import permissions
 
 

@@ -1,5 +1,7 @@
 import subprocess
+
 import pytest
+
 from wiki_agent.core import git
 
 

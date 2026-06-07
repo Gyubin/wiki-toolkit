@@ -1,6 +1,5 @@
-import pytest
-from wiki_agent.core import sources
 from wiki_agent import schema
+from wiki_agent.core import sources
 
 
 def test_create_source_personal(vault):

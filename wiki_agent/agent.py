@@ -4,7 +4,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from claude_agent_sdk import (
-    AssistantMessage, ClaudeAgentOptions, ClaudeSDKClient, TextBlock,
+    AssistantMessage,
+    ClaudeAgentOptions,
+    ClaudeSDKClient,
+    TextBlock,
 )
 
 from .permissions import make_can_use_tool

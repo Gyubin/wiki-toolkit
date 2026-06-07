@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+
 from wiki_agent.app import create_app
 
 
@@ -11,8 +12,8 @@ def test_capture_and_pending(vault):
     sid = r.json()["id"]
     assert sid.startswith("source-")
 
-    from wiki_agent.core import claims
     from wiki_agent import schema
+    from wiki_agent.core import claims
     claims.create_claim(vault, claim="some claim", claim_type="technical_fact",
                         source_refs=[sid], date_str=schema.today_str(), seq=1)
 
@@ -25,8 +26,8 @@ def test_capture_and_pending(vault):
 def test_approve_claim(vault):
     app = create_app(vault)
     client = TestClient(app)
-    from wiki_agent.core import claims
     from wiki_agent import schema
+    from wiki_agent.core import claims
     claims.create_claim(vault, claim="c", claim_type="technical_fact",
                         source_refs=[], date_str=schema.today_str(), seq=1)
     cid = "claim-" + schema.today_str().replace("-", "") + "-001"
@@ -39,8 +40,8 @@ def test_approve_claim(vault):
 def test_due_reviews_route(vault):
     app = create_app(vault)
     client = TestClient(app)
-    from wiki_agent.core import learning
     from wiki_agent import schema
+    from wiki_agent.core import learning
     learning.create_learning_item(vault, topic="t", skill_area="frontend",
                                   date_str=schema.today_str(), seq=1)
     r = client.get("/reviews/due")
@@ -83,8 +84,8 @@ def _fake_embed(texts):
 
 
 def test_search_route(vault):
-    from wiki_agent.core import claims
     from wiki_agent import schema
+    from wiki_agent.core import claims
     claims.create_claim(vault, claim="react hook timing", claim_type="technical_fact",
                         source_refs=["s"], date_str=schema.today_str(), seq=1)
     claims.create_claim(vault, claim="git commit conventions", claim_type="technical_fact",

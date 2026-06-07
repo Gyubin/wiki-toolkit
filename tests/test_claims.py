@@ -1,6 +1,7 @@
 import pytest
-from wiki_agent.core import claims
+
 from wiki_agent import schema
+from wiki_agent.core import claims
 
 
 def _make(vault, seq=1, text="React useEffect runs after paint"):
