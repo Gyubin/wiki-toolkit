@@ -5,3 +5,14 @@ __pycache__/
 *.egg-info/
 .obsidian/workspace*.json
 .obsidian/cache
+
+# Vault content is a separate private repo — never track it here
+00_Inbox/
+01_Projects/
+02_Areas/
+03_Resources/
+06_Metadata/
+10_Claims/
+30_Learning/
+.obsidian/
+.omc/
