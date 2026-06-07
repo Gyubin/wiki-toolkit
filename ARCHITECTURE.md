@@ -1,4 +1,4 @@
-# ARCHITECTURE — wiki-agent
+# ARCHITECTURE — wiki-agents
 
 > A map, not a manual. Structural boundaries that rarely change, and what does **not** exist where.
 > For the "why" of each feature, read the ExecPlans in `docs/superpowers/specs/` and `plans/`.
