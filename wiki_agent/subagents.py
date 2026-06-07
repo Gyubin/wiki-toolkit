@@ -20,19 +20,20 @@ def build_subagents() -> dict[str, AgentDefinition]:
         "ingest": AgentDefinition(
             description="Ingest a raw clip into triaged, unverified claims.",
             prompt=_p("ingest"),
-            tools=["Read", "Grep"] + [t for t in w if any(
-                k in t for k in ("create_source", "triage_record", "create_claim", "find_similar_claim"))],
+            tools=["Read", "Grep"] + [t for t in w if any(k in t for k in (
+                "create_source", "triage_record", "create_claim", "find_similar_claim"))],
             model="claude-opus-4-8",
         ),
         "verify": AgentDefinition(
             description="Verify pending claims with evidence; promote or block.",
             prompt=_p("verify"),
-            tools=["Read", "Grep", "Glob", "Bash"] + [t for t in w if any(
-                k in t for k in ("promote_claim", "set_claim_status", "create_wiki_page", "list_pending"))],
+            tools=["Read", "Grep", "Glob", "Bash"] + [t for t in w if any(k in t for k in (
+                "promote_claim", "set_claim_status", "create_wiki_page", "list_pending"))],
             model="claude-opus-4-8",
         ),
         "answer": AgentDefinition(
-            description="Answer from the wiki with epistemic status; feed insights back as unverified.",
+            description="Answer from the wiki with epistemic status; "
+                        "feed insights back as unverified.",
             prompt=_p("answer"),
             tools=["Read", "Grep", "Glob", "mcp__wiki__create_claim", "mcp__wiki__search_wiki"],
             disallowedTools=["Write", "Edit"],

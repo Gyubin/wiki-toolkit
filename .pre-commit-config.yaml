@@ -1,0 +1,23 @@
+# Fast feedback tiers (harness engineering):
+#   commit-time (seconds): ruff lint (lint only — formatting is intentionally not enforced,
+#                          to preserve the codebase's hand-tuned style)
+#   push-time (minutes):   full pytest suite — the gate before sharing
+# Hooks run ruff/pytest via `uv run` so they use the exact dev-group versions (no drift).
+# Install once:  uv run pre-commit install --hook-type pre-commit --hook-type pre-push
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff (lint, --fix)
+        entry: uv run ruff check --fix --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+
+      - id: pytest
+        name: pytest (full suite)
+        entry: uv run pytest -q
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

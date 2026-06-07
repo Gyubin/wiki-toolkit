@@ -36,7 +36,8 @@ def run_checks(vault: Path, today_str: str) -> list[dict]:
         ref = meta.get("id", str(p))
         if status in _STATUS_DIR and _STATUS_DIR[status] != d:
             findings.append(_f("status_folder_mismatch", "error", ref,
-                               f"status '{status}' belongs in '{_STATUS_DIR[status]}', found in '{d}'"))
+                               f"status '{status}' belongs in '{_STATUS_DIR[status]}', "
+                               f"found in '{d}'"))
         if not meta.get("source_refs"):
             findings.append(_f("missing_source_refs", "warning", ref, "claim has no source_refs"))
         if status == "verified" and not meta.get("evidence_refs"):

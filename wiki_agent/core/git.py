@@ -7,8 +7,9 @@ from pathlib import Path
 
 def _git(repo: Path, *args: str) -> str:
     try:
-        out = subprocess.run(
-            ["git", "-C", str(repo), *args],
+        # fixed `git` argv on PATH, no shell, controlled args — deliberate.
+        out = subprocess.run(  # noqa: S603
+            ["git", "-C", str(repo), *args],  # noqa: S607
             capture_output=True, text=True, check=True,
         )
     except (subprocess.CalledProcessError, FileNotFoundError) as e:

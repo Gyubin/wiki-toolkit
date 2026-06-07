@@ -18,10 +18,22 @@ dependencies = [
 wiki = "wiki_agent.__main__:main"
 
 [dependency-groups]
-dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff>=0.6", "pre-commit>=3.7"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S"]
+# S101 (assert) is fine in tests; assert is also used as runtime guards in core gates.
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S"]  # tests use subprocess, tmp paths, asserts freely
 
 [build-system]
 requires = ["hatchling"]

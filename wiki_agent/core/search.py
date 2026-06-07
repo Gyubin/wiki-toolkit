@@ -27,7 +27,7 @@ def iter_docs(vault: Path) -> list[dict]:
         for p in base.rglob("*.md"):
             try:
                 meta, body = schema.parse_doc(p.read_text(encoding="utf-8"))
-            except Exception:
+            except Exception:  # noqa: S112 — skip unparseable vault files; indexing is best-effort
                 continue
             title = (meta.get("title") or meta.get("name") or meta.get("claim")
                      or meta.get("topic") or p.stem)
@@ -40,7 +40,7 @@ def iter_docs(vault: Path) -> list[dict]:
 
 
 def _cosine(a, b) -> float:
-    num = sum(x * y for x, y in zip(a, b))
+    num = sum(x * y for x, y in zip(a, b, strict=True))
     da = math.sqrt(sum(x * x for x in a))
     db = math.sqrt(sum(y * y for y in b))
     return num / (da * db) if da and db else 0.0
@@ -60,8 +60,10 @@ class SearchIndex:
         bm = self._bm25.get_scores(tokenize(q))
         qvec = self._embed_fn([q])[0]
         cos = [_cosine(qvec, v) for v in self._doc_vecs]
-        bm_rank = {i: r for r, i in enumerate(sorted(range(n), key=lambda i: bm[i], reverse=True))}
-        cos_rank = {i: r for r, i in enumerate(sorted(range(n), key=lambda i: cos[i], reverse=True))}
+        bm_order = sorted(range(n), key=lambda i: bm[i], reverse=True)
+        cos_order = sorted(range(n), key=lambda i: cos[i], reverse=True)
+        bm_rank = {i: r for r, i in enumerate(bm_order)}
+        cos_rank = {i: r for r, i in enumerate(cos_order)}
         fused = sorted(
             ((1.0 / (_RRF_K + bm_rank[i]) + 1.0 / (_RRF_K + cos_rank[i]), i) for i in range(n)),
             reverse=True,
