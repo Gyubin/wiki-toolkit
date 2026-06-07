@@ -9,6 +9,7 @@ import uvicorn
 from .app import create_app
 from .core import scaffold
 from .core import lint as lint_core
+from .core import search as search_core
 from . import schema
 
 
@@ -30,6 +31,12 @@ def main() -> None:
         scaffold.scaffold_vault(vault)
         for f in lint_core.run_checks(vault, schema.today_str()):
             print(f"[{f['severity']}] {f['check']} — {f['ref']}: {f['message']}")
+        return
+    if cmd == "search":
+        query = " ".join(args[1:])
+        idx = search_core.build_index(Path.cwd())
+        for r in idx.query(query, 8):
+            print(f"[{r['score']}] {r['title']} ({r['ref']})")
         return
     print(f"unknown command: {cmd}; use 'init' or 'serve'")
 

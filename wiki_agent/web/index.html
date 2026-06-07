@@ -23,6 +23,7 @@
     <button data-tab="verify">Verify</button>
     <button data-tab="review">Review</button>
     <button data-tab="lint">Lint</button>
+    <button data-tab="search">Search</button>
   </nav>
   <main>
     <section id="chat" class="panel active">
@@ -57,6 +58,11 @@
       <button onclick="lintContradictions()">모순 검사 (LLM)</button>
       <div id="lintFindings"></div>
       <div id="lintContra" style="white-space:pre-wrap;border:1px solid #ccc;padding:.5rem;margin-top:.5rem"></div>
+    </section>
+    <section id="search" class="panel">
+      <input id="searchQ" style="width:70%" placeholder="의미 기반 검색어" />
+      <button onclick="searchRun()">검색</button>
+      <div id="searchResults"></div>
     </section>
   </main>
   <script>
@@ -110,6 +116,13 @@
           if (l.startsWith('data: ') && l !== 'data: [DONE]') out.textContent += l.slice(6);
         });
       }
+    }
+    async function searchRun() {
+      const q = document.getElementById('searchQ').value;
+      const rows = await (await fetch('/search?q=' + encodeURIComponent(q))).json();
+      document.getElementById('searchResults').innerHTML = rows.map(r =>
+        `<div class="row"><b>${r.title}</b> <small>[${r.ref}] ${r.score}</small><br>${r.snippet}</div>`
+      ).join('') || '결과 없음';
     }
     async function capture() {
       const content = document.getElementById('capContent').value;
