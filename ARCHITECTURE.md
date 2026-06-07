@@ -5,7 +5,9 @@
 
 A local conversational AI agent + FastAPI web app that turns raw clips and coding sessions into
 verified, source-linked knowledge and learning material in one Markdown vault. The vault on disk is
-the product; Obsidian reads it; this code writes it.
+the product; Obsidian reads it; this code writes it. **The vault lives outside this repo** (a
+separate private directory at `$WIKI_VAULT`); this repo is code only. Every entry point resolves the
+vault path via `resolve_vault` (`__main__.py`): explicit arg > `$WIKI_VAULT` > cwd.
 
 ## Layers (imports flow upward only — a higher layer may import a lower one, never the reverse)
 

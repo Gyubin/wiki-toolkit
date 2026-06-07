@@ -4,7 +4,8 @@ Opinionated, mechanical rules. Follow them; several are enforced by tests. Read 
 for the code map and `docs/superpowers/` for the design history (ExecPlans).
 
 ## 1. Environment
-- Use **`uv`**: `uv run pytest`, `uv run wiki init|serve|lint|search`. Don't invoke `python`/`pip` directly.
+- Use **`uv`**: `uv run pytest`, `uv run ruff check`, `uv run wiki init|serve|lint|search`. Don't invoke `python`/`pip` directly.
+- **The vault lives outside this repo.** Every `wiki` subcommand resolves the vault as: explicit path arg > `$WIKI_VAULT` > cwd (`resolve_vault` in `__main__.py`). Point it at your vault, e.g. `uv run wiki serve "$WIKI_VAULT"`. This repo holds **code only**.
 - The agent runtime (`WikiSession`, `/chat`, `/wrap`, `/lint/contradictions`) needs the **Claude Code CLI** installed; pure `core/` logic and the web routes that only touch `core/` do not.
 
 ## 2. Integrity — go through `core/`, never hand-write structured files
@@ -23,11 +24,11 @@ for the code map and `docs/superpowers/` for the design history (ExecPlans).
 
 ## 5. Workflow
 - Non-trivial change: write a spec + plan under `docs/superpowers/`, then TDD (failing test → impl → pass).
-- `uv run pytest` must be green before committing.
-- Commit **only the files your task touched** — `git add -A` is forbidden (the repo holds unrelated vault content and design docs). End commit subjects in the conventional `feat:`/`test:`/`docs:` style already used.
+- `uv run ruff check` clean and `uv run pytest` green before committing. Fast loops are wired via `.pre-commit-config.yaml` (ruff at commit, pytest at push); install once with `uv run pre-commit install --hook-type pre-commit --hook-type pre-push`.
+- Commit **only the files your task touched** — `git add -A` is forbidden. End commit subjects in the conventional `feat:`/`test:`/`docs:` style already used.
 
 ## 6. Security
-- This is one unified vault containing work content. **Do not push it to a personal or public remote.** No remote is configured by default — keep it that way unless it's a private, authorized destination.
+- This repo is **code only and may be published**; the vault (work/confidential content) is a **separate private repo** outside this tree, located at `$WIKI_VAULT`. Vault dirs (`00_Inbox`…`30_Learning`, `.obsidian`) are git-ignored here so they can never be committed into the code history. Don't push the vault to any personal/public remote.
 
 ## 7. Designed for obsolescence
 - Each harness piece encodes a current model limitation. After a model upgrade, re-check whether a scoped prompt, gate, or tool is still needed and remove what isn't.
