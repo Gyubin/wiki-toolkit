@@ -54,4 +54,11 @@ def build_subagents() -> dict[str, AgentDefinition]:
                                  "create_learning_item"))],
             model="claude-opus-4-8",
         ),
+        "lint": AgentDefinition(
+            description="Read-only audit: find contradictions among claims and report them.",
+            prompt=_p("lint"),
+            tools=["Read", "Grep", "Glob"],
+            disallowedTools=["Write", "Edit", "Bash"],
+            model="claude-opus-4-8",
+        ),
     }
