@@ -58,3 +58,17 @@ def test_wrap_route_exists(vault):
     app = create_app(vault)
     routes = {r.path for r in app.routes}
     assert "/wrap" in routes
+
+
+def test_lint_route(vault):
+    app = create_app(vault)
+    client = TestClient(app)
+    r = client.get("/lint")
+    assert r.status_code == 200
+    assert isinstance(r.json(), list)
+
+
+def test_contradictions_route_exists(vault):
+    app = create_app(vault)
+    routes = {r.path for r in app.routes}
+    assert "/lint/contradictions" in routes

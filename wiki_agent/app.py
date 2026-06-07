@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import schema
-from .core import claims, learning, sources
+from .core import claims, learning, lint, sources
 
 _WEB = Path(__file__).parent / "web"
 
@@ -69,6 +69,10 @@ def create_app(vault: Path) -> FastAPI:
         p = learning.record_review(vault, lid, passed=passed, today_str=schema.today_str())
         return {"id": lid, "path": str(p)}
 
+    @app.get("/lint")
+    def lint_check():
+        return lint.run_checks(vault, schema.today_str())
+
     @app.get("/")
     def home():
         return FileResponse(_WEB / "index.html")
@@ -112,4 +116,10 @@ def _attach_chat(app: FastAPI, vault: Path) -> None:
         )
         if body.transcript:
             prompt += f"\n\nTranscript (optional context):\n{body.transcript}"
+        return StreamingResponse(_stream(prompt), media_type="text/event-stream")
+
+    @app.post("/lint/contradictions")
+    async def lint_contradictions():
+        prompt = ("Use the lint subagent to audit the claim ledger for contradictions and report "
+                  "the conflicting pairs. Report only — do not modify any claim.")
         return StreamingResponse(_stream(prompt), media_type="text/event-stream")
