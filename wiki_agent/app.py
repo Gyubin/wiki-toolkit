@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import schema
-from .core import claims, learning, lint, sources
+from .core import claims, learning, lint, search, sources
 
 _WEB = Path(__file__).parent / "web"
 
@@ -27,7 +27,7 @@ def _next_seq(vault: Path, subdir: str, prefix: str) -> int:
     return (len(list(d.glob(f"{prefix}-*.md"))) if d.exists() else 0) + 1
 
 
-def create_app(vault: Path) -> FastAPI:
+def create_app(vault: Path, embed_fn=None) -> FastAPI:
     vault = Path(vault)
     app = FastAPI(title="Personal AI Wiki")
 
@@ -72,6 +72,14 @@ def create_app(vault: Path) -> FastAPI:
     @app.get("/lint")
     def lint_check():
         return lint.run_checks(vault, schema.today_str())
+
+    _search_index: dict = {}
+
+    @app.get("/search")
+    def search_route(q: str = "", k: int = 8, reindex: bool = False):
+        if reindex or "idx" not in _search_index:
+            _search_index["idx"] = search.build_index(vault, embed_fn=embed_fn)
+        return _search_index["idx"].query(q, k)
 
     @app.get("/")
     def home():
