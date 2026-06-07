@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import os
 import re
 from pathlib import Path
 
@@ -11,6 +12,17 @@ from .. import schema
 
 _INCLUDE = ("00_Inbox", "01_Projects", "02_Areas", "03_Resources", "10_Claims", "30_Learning")
 _RRF_K = 60
+_EMBED_MODEL = "intfloat/multilingual-e5-large"
+
+
+def _embed_cache_dir() -> str:
+    """Persistent cache for downloaded embedding weights: $WIKI_EMBED_CACHE > ~/.cache.
+
+    fastembed defaults to the OS temp dir (e.g. /var/folders/.../T on macOS), which the
+    OS may purge — forcing a multi-hundred-MB re-download. Pin it to a stable location.
+    """
+    override = os.environ.get("WIKI_EMBED_CACHE")
+    return override or str(Path.home() / ".cache" / "wiki-agents" / "fastembed")
 
 
 def tokenize(text: str) -> list[str]:
@@ -78,7 +90,7 @@ class SearchIndex:
 
 def _default_embedder():
     from fastembed import TextEmbedding
-    model = TextEmbedding(model_name="intfloat/multilingual-e5-large")
+    model = TextEmbedding(model_name=_EMBED_MODEL, cache_dir=_embed_cache_dir())
 
     def embed(texts):
         return [list(v) for v in model.embed(list(texts))]
