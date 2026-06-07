@@ -22,6 +22,7 @@
     <button data-tab="wrap">Wrap</button>
     <button data-tab="verify">Verify</button>
     <button data-tab="review">Review</button>
+    <button data-tab="lint">Lint</button>
   </nav>
   <main>
     <section id="chat" class="panel active">
@@ -50,6 +51,12 @@
     <section id="review" class="panel">
       <button onclick="loadDue()">새로고침</button>
       <div id="due"></div>
+    </section>
+    <section id="lint" class="panel">
+      <button onclick="loadLint()">결정론적 점검</button>
+      <button onclick="lintContradictions()">모순 검사 (LLM)</button>
+      <div id="lintFindings"></div>
+      <div id="lintContra" style="white-space:pre-wrap;border:1px solid #ccc;padding:.5rem;margin-top:.5rem"></div>
     </section>
   </main>
   <script>
@@ -85,6 +92,22 @@
       while (true) { const {value, done} = await reader.read(); if (done) break;
         dec.decode(value).split('\n').forEach(l => {
           if (l.startsWith('data: ') && l !== 'data: [DONE]') log.textContent += l.slice(6);
+        });
+      }
+    }
+    async function loadLint() {
+      const rows = await (await fetch('/lint')).json();
+      document.getElementById('lintFindings').innerHTML = rows.map(f =>
+        `<div class="row">[${f.severity}] ${f.check} — ${f.ref}: ${f.message}</div>`).join('') || '깨끗함';
+    }
+    async function lintContradictions() {
+      const out = document.getElementById('lintContra');
+      out.textContent = 'checking...\n';
+      const res = await fetch('/lint/contradictions', {method: 'POST'});
+      const reader = res.body.getReader(); const dec = new TextDecoder();
+      while (true) { const {value, done} = await reader.read(); if (done) break;
+        dec.decode(value).split('\n').forEach(l => {
+          if (l.startsWith('data: ') && l !== 'data: [DONE]') out.textContent += l.slice(6);
         });
       }
     }

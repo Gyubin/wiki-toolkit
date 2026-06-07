@@ -8,6 +8,8 @@ import uvicorn
 
 from .app import create_app
 from .core import scaffold
+from .core import lint as lint_core
+from . import schema
 
 
 def main() -> None:
@@ -23,6 +25,11 @@ def main() -> None:
         scaffold.scaffold_vault(vault)  # idempotent
         app = create_app(vault)
         uvicorn.run(app, host="127.0.0.1", port=8765)
+        return
+    if cmd == "lint":
+        scaffold.scaffold_vault(vault)
+        for f in lint_core.run_checks(vault, schema.today_str()):
+            print(f"[{f['severity']}] {f['check']} — {f['ref']}: {f['message']}")
         return
     print(f"unknown command: {cmd}; use 'init' or 'serve'")
 
