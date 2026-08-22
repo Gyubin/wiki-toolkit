@@ -87,6 +87,39 @@ def test_inbox_clip_without_frontmatter_is_visible(vault):
                for f in findings)
 
 
+def test_unclosed_fence_file_is_reported(vault):
+    # 닫는 펜스가 없으면 parse_doc이 조용히 ({}, text)를 돌려준다: lint가 잡아야 한다
+    (vault / "10_Claims/pending/claim-20260101-011.md").write_text(
+        "---\ntype: claim\nid: claim-20260101-011\nno closing fence", encoding="utf-8")
+    findings = lint.run_checks(vault, "2026-06-07")
+    assert any(f["check"] == "unparseable" and "claim-20260101-011" in f["ref"]
+               for f in findings)
+
+
+def test_per_project_session_ids_are_not_duplicates(vault):
+    from wiki_agents.core import projects
+    projects.create_session_summary(vault, repo="/tmp/repo-a", title="a", body="b",
+                                    date_str="2026-01-01", seq=1)
+    projects.create_session_summary(vault, repo="/tmp/repo-b", title="b", body="b",
+                                    date_str="2026-01-01", seq=1)
+    findings = lint.run_checks(vault, "2026-06-07")
+    assert not any(f["check"] == "duplicate_id" for f in findings)
+
+
+def test_dangling_id_shaped_refs_are_reported(vault):
+    claims.create_claim(vault, claim="refs a ghost source", claim_type="technical_fact",
+                        source_refs=["source-19990101-001"], date_str="2026-01-01", seq=1)
+    findings = lint.run_checks(vault, "2026-06-07")
+    assert any(f["check"] == "dangling_ref" for f in findings)
+
+
+def test_non_id_refs_are_not_flagged(vault):
+    claims.create_claim(vault, claim="refs a url", claim_type="technical_fact",
+                        source_refs=["https://example.com/post"], date_str="2026-01-01", seq=1)
+    findings = lint.run_checks(vault, "2026-06-07")
+    assert not any(f["check"] == "dangling_ref" for f in findings)
+
+
 def test_inbox_clip_with_foreign_frontmatter_is_still_flagged(vault):
     # Obsidian Web Clipper는 자체 frontmatter(title 등)를 붙이지만 wiki 스키마(id)는 없다
     (vault / "00_Inbox/browser-clips/clipped.md").write_text(

@@ -60,10 +60,11 @@ def record_review(vault: Path, learning_id: str, *, passed: bool, today_str: str
     cur = levels.index(lvl) if lvl in levels else 0
     if passed:
         new_idx = min(cur + 1, len(levels) - 1)
-        meta["level"] = levels[new_idx]
         meta["next_review"] = _add_days(today_str, _INTERVALS[min(cur, len(_INTERVALS) - 1)])
     else:
+        new_idx = cur
         meta["next_review"] = _add_days(today_str, 1)
+    meta["level"] = levels[new_idx]  # level 키가 없거나 오염된 파일도 유효값으로 복구
     path.write_text(schema.render_doc(meta, body), encoding="utf-8")
     index.update_index(vault, "learning-index", learning_id,
                        f"{meta.get('topic','')} - {meta['level']}")

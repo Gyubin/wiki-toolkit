@@ -34,11 +34,16 @@ def _embed_cache_dir() -> str:
 
 
 def tokenize(text: str) -> list[str]:
-    """ASCII 단어는 그대로, 한글 연속열은 2-gram으로 쪼갠다 (BM25용)."""
+    """ASCII 단어는 그대로, 한글 연속열은 unigram + 2-gram (BM25용).
+
+    unigram이 없으면 한 글자 질의("밥")가 문서의 "밥솥"("밥솥" bigram만 생성)과
+    구조적으로 매치 불가능해진다. 흔한 글자는 idf가 낮아 노이즈는 제한된다.
+    """
     toks: list[str] = []
     for m in re.finditer(r"[a-z0-9]+|[가-힣]+", text.lower()):
         t = m.group(0)
         if "가" <= t[0] <= "힣" and len(t) > 1:
+            toks.extend(t)
             toks.extend(t[i:i + 2] for i in range(len(t) - 1))
         else:
             toks.append(t)
@@ -77,7 +82,10 @@ def vault_fingerprint(vault: Path) -> int:
     """md 파일 목록 + mtime + 크기의 해시. 바뀌면 인덱스를 다시 만들어야 한다."""
     items = []
     for p in _md_files(vault):
-        st = p.stat()
+        try:
+            st = p.stat()
+        except OSError:  # 깨진 심링크, glob과 stat 사이의 삭제 race
+            continue
         items.append((str(p), st.st_mtime_ns, st.st_size))
     return hash(tuple(items))
 
@@ -88,9 +96,16 @@ class VecCache:
     def __init__(self, path: Path):
         self.path = Path(path)
         try:
-            self._data = json.loads(self.path.read_text(encoding="utf-8"))
+            data = json.loads(self.path.read_text(encoding="utf-8"))
         except Exception:
-            self._data = {}
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        # 오염된 항목(벡터가 아닌 값)은 로드에서 걸러 자가 복구한다
+        self._data = {
+            k: v for k, v in data.items()
+            if isinstance(v, list) and v and all(isinstance(x, int | float) for x in v)
+        }
         self._dirty = False
 
     @staticmethod
@@ -108,7 +123,9 @@ class VecCache:
         if not self._dirty:
             return
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(self._data), encoding="utf-8")
+        tmp = self.path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(self._data), encoding="utf-8")
+        tmp.replace(self.path)  # 원자적 교체: 저장 중 종료돼도 기존 캐시가 살아남는다
         self._dirty = False
 
 
@@ -127,14 +144,43 @@ def _embed_texts(texts: list[str], embed_fn, vec_cache: VecCache | None) -> list
         for t, v in zip(missing, embed_fn(missing), strict=True):
             vec_cache.put(t, v)
         vec_cache.save()
-    return [vec_cache.get(t) for t in texts]  # type: ignore[misc]
+    result = [vec_cache.get(t) for t in texts]
+    # 모델이 바뀌는 등으로 캐시 차원이 섞이면 전체 재임베딩으로 자가 복구
+    if len({len(v) for v in result}) > 1:
+        fresh = [list(map(float, v)) for v in embed_fn(texts)]
+        for t, v in zip(texts, fresh, strict=True):
+            vec_cache.put(t, v)
+        vec_cache.save()
+        return fresh
+    return result  # type: ignore[return-value]
+
+
+def _competition_ranks(scores) -> list[int]:
+    """동점은 같은 순위 (competition ranking: 순위 = 자기보다 큰 점수 개수).
+
+    안정 정렬 기반 순위는 동점(특히 전부 0)일 때 파일 순회 순서를 순위로 둔갑시켜
+    RRF 융합에서 실제 신호를 뒤집는다 (실측으로 확인된 결함).
+    """
+    s = [float(x) for x in scores]
+    uniq = sorted(set(s), reverse=True)
+    counts: dict[float, int] = {}
+    for x in s:
+        counts[x] = counts.get(x, 0) + 1
+    start: dict[float, int] = {}
+    c = 0
+    for u in uniq:
+        start[u] = c
+        c += counts[u]
+    return [start[x] for x in s]
 
 
 class SearchIndex:
     def __init__(self, docs: list[dict], embed_fn, vec_cache: VecCache | None = None):
         self.docs = docs
         self._embed_fn = embed_fn
-        self._bm25 = BM25Okapi([tokenize(d["text"]) for d in docs]) if docs else None
+        token_lists = [tokenize(d["text"]) for d in docs]
+        # 전 문서가 빈 토큰이면 BM25Okapi가 ZeroDivisionError로 죽는다
+        self._bm25 = BM25Okapi(token_lists) if any(token_lists) else None
         # e5 계열은 문서에 passage:, 질의에 query: 접두사를 요구한다
         vecs = _embed_texts(["passage: " + d["text"] for d in docs], embed_fn, vec_cache)
         self._doc_mat = None
@@ -148,20 +194,19 @@ class SearchIndex:
         if not self.docs or not q.strip():
             return []
         n = len(self.docs)
-        bm = self._bm25.get_scores(tokenize(q))
+        bm = self._bm25.get_scores(tokenize(q)) if self._bm25 is not None \
+            else np.zeros(n, dtype=np.float32)
         if self._doc_mat is not None:
             qv = np.asarray(self._embed_fn(["query: " + q])[0], dtype=np.float32)
             qn = float(np.linalg.norm(qv))
             cos = self._doc_mat @ (qv / qn if qn else qv)
         else:
             cos = np.zeros(n, dtype=np.float32)
-        bm_order = sorted(range(n), key=lambda i: bm[i], reverse=True)
-        cos_order = sorted(range(n), key=lambda i: float(cos[i]), reverse=True)
-        bm_rank = {i: r for r, i in enumerate(bm_order)}
-        cos_rank = {i: r for r, i in enumerate(cos_order)}
+        bm_rank = _competition_ranks(bm)
+        cos_rank = _competition_ranks(cos)
         fused = sorted(
             ((1.0 / (_RRF_K + bm_rank[i]) + 1.0 / (_RRF_K + cos_rank[i]), i) for i in range(n)),
-            reverse=True,
+            key=lambda t: (-t[0], t[1]),  # 완전 동점만 안정적으로 파일 순
         )
         out = []
         for score, i in fused[:k]:
@@ -184,12 +229,19 @@ def _default_embedder():
     return embed
 
 
+def _empty_embedder(texts):
+    return [[] for _ in texts]
+
+
 def build_index(vault: Path, embed_fn=None, vec_cache: VecCache | None = None) -> SearchIndex:
+    docs = iter_docs(vault)
     if embed_fn is None:
+        if not docs:  # 빈 vault에 2.2GB 임베딩 모델을 로드할 이유가 없다
+            return SearchIndex([], _empty_embedder)
         embed_fn = _default_embedder()
         if vec_cache is None:
             vec_cache = _default_vec_cache()
-    return SearchIndex(iter_docs(vault), embed_fn, vec_cache)
+    return SearchIndex(docs, embed_fn, vec_cache)
 
 
 class IndexCache:
@@ -206,8 +258,13 @@ class IndexCache:
         fp = vault_fingerprint(self._vault)
         if not force and self._idx is not None and fp == self._fp:
             return self._idx
+        docs = iter_docs(self._vault)
+        if not docs and self._embed_fn is None:
+            self._idx = SearchIndex([], _empty_embedder)
+            self._fp = fp
+            return self._idx
         if self._embed_fn is None:
             self._embed_fn = _default_embedder()
-        self._idx = SearchIndex(iter_docs(self._vault), self._embed_fn, self._vec_cache)
+        self._idx = SearchIndex(docs, self._embed_fn, self._vec_cache)
         self._fp = fp
         return self._idx

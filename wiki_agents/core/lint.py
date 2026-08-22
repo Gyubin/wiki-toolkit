@@ -21,12 +21,24 @@ def _f(check: str, severity: str, ref: str, message: str) -> dict:
     return {"check": check, "severity": severity, "ref": ref, "message": message}
 
 
+_ID_SHAPED = re.compile(r"^(?:source|claim|session|decision|learning)-\d{8}-\d+$")
+
+
 def _parse(p: Path) -> dict | None:
+    """meta dict, 또는 파싱 불가/펜스 손상이면 None.
+
+    parse_doc은 닫는 펜스가 없는 파일을 조용히 ({}, 원문)으로 돌려주므로,
+    '---'로 시작하는데 meta가 비면 손상으로 취급해야 한다. 안 그러면 lint는
+    침묵하는데 list_pending 같은 소비자는 그 파일에서 죽는 모순이 생긴다.
+    """
     try:
-        meta, _ = schema.parse_doc(p.read_text(encoding="utf-8"))
-        return meta
+        text = p.read_text(encoding="utf-8")
+        meta, _ = schema.parse_doc(text)
     except Exception:
         return None
+    if not meta and text.startswith("---"):
+        return None
+    return meta
 
 
 def run_checks(vault: Path, today_str: str) -> list[dict]:
@@ -68,6 +80,7 @@ def run_checks(vault: Path, today_str: str) -> list[dict]:
             findings.append(_f("orphan_wiki", "info", meta.get("name", str(p)),
                                "wiki page has no claim_refs"))
 
+    all_refs: list[tuple[str, str]] = []  # (참조하는 문서 ref, 참조되는 id)
     for p in vault.rglob("*.md"):
         rel = str(p.relative_to(vault))
         if rel.startswith((".obsidian", "06_Metadata")):
@@ -75,26 +88,38 @@ def run_checks(vault: Path, today_str: str) -> list[dict]:
         meta = _parse(p)
         if meta is None:
             findings.append(_f("unparseable", "error", rel,
-                               "YAML frontmatter cannot be parsed"))
+                               "YAML frontmatter cannot be parsed (or fence is broken)"))
             continue
         mid = meta.get("id")
         if mid:
-            id_files.setdefault(str(mid), []).append(rel)
+            # session/decision id는 프로젝트별 스코프라 프로젝트가 다르면 중복이 아니다
+            scope = rel.split("/")[1] if rel.startswith("01_Projects/") else ""
+            id_files.setdefault(f"{mid}|{scope}", []).append(rel)
         # Web Clipper 유입물은 자체 frontmatter(title 등)는 있어도 wiki 스키마(id)가 없다
         if rel.startswith("00_Inbox") and not mid:
             findings.append(_f("inbox_unstructured", "info", rel,
                                "raw clip without source schema (no id); needs ingest"))
         if not meta:
             continue
+        for field in ("source_refs", "evidence_refs", "claim_refs"):
+            for ref in meta.get(field) or []:
+                all_refs.append((str(mid or rel), str(ref)))
         ra = meta.get("review_after")
         if ra and str(ra) <= today_str:
             findings.append(_f("stale", "warning", meta.get("id", rel),
                                f"review_after {ra} has passed"))
 
-    for mid, files in id_files.items():
+    for key, files in id_files.items():
         if len(files) > 1:
-            findings.append(_f("duplicate_id", "error", mid,
+            findings.append(_f("duplicate_id", "error", key.split("|")[0],
                                "same id in multiple files: " + ", ".join(sorted(files))))
+
+    known_ids = {key.split("|")[0] for key in id_files}
+    for holder, ref in all_refs:
+        # id 모양의 참조만 판정한다 (URL이나 자유 텍스트 출처는 판단 불가)
+        if _ID_SHAPED.match(ref) and ref not in known_ids:
+            findings.append(_f("dangling_ref", "warning", holder,
+                               f"references {ref}, which does not exist in the vault"))
 
     for indexname, root in _INDEX_ROOTS.items():
         idx = vault / "06_Metadata/indexes" / f"{indexname}.md"

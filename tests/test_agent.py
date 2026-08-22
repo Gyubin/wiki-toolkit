@@ -26,6 +26,12 @@ def test_gated_tools_are_not_preapproved(vault):
         assert name not in opts.allowed_tools
 
 
+def test_permission_mode_keeps_gate_alive(vault):
+    # acceptEdits는 Write/Edit를 콜백 도달 전에 자동 승인한다 (SDK 문서 명시).
+    # default여야 RAW_MUTATION_TOOLS deny가 실제로 작동한다.
+    assert agent.build_options(vault).permission_mode == "default"
+
+
 def test_model_env_override(vault, monkeypatch):
     monkeypatch.setenv("WIKI_MODEL", "claude-test-model")
     opts = agent.build_options(vault)

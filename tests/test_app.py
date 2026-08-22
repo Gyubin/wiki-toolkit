@@ -151,6 +151,43 @@ def test_cross_origin_browser_requests_are_rejected(vault):
     assert r.status_code == 200
 
 
+def test_dns_rebinding_host_is_rejected(vault):
+    # Origin 없는 GET이라도 Host가 로컬이 아니면(DNS 리바인딩) 거부해야 한다
+    client = TestClient(create_app(vault))
+    r = client.get("/claims/pending", headers={"Host": "evil.example"})
+    assert r.status_code == 403
+    r = client.get("/claims/pending", headers={"Host": "127.0.0.1:8765"})
+    assert r.status_code == 200
+
+
+class _FakeResp:
+    def __init__(self, text):
+        self.text = text
+
+    def raise_for_status(self):
+        return None
+
+
+def test_capture_botwall_page_is_not_saved(vault, monkeypatch):
+    from wiki_agents import app as app_mod
+    monkeypatch.setattr(app_mod.httpx, "get", lambda *a, **k: _FakeResp(
+        "<html><body><p>JavaScript is not available.</p>"
+        "<p>Please enable JavaScript or switch to a supported browser.</p></body></html>"))
+    client = TestClient(create_app(vault))
+    r = client.post("/capture", json={"origin": "web", "url": "http://x.com/status/1"})
+    assert r.status_code == 422
+    assert not list((vault / "00_Inbox/raw").glob("source-*.md"))
+
+
+def test_capture_near_empty_page_is_not_saved(vault, monkeypatch):
+    from wiki_agents import app as app_mod
+    monkeypatch.setattr(app_mod.httpx, "get",
+                        lambda *a, **k: _FakeResp("<html><body>hi</body></html>"))
+    client = TestClient(create_app(vault))
+    r = client.post("/capture", json={"origin": "web", "url": "http://x.invalid/page"})
+    assert r.status_code == 422
+
+
 def _chat_events(text):
     events = []
     for block in text.split("\n\n"):

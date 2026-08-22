@@ -31,9 +31,11 @@ def build_subagents() -> dict[str, AgentDefinition]:
             model=model,
         ),
         "verify": AgentDefinition(
+            # Bash 없음: verify는 신뢰 불가 클립 유래 claim 텍스트를 다루므로
+            # 주입 시 실행 능력이 없어야 한다. 테스트 실행은 wrap의 몫.
             description="Verify pending claims with evidence; promote or block.",
             prompt=_p("verify"),
-            tools=["Read", "Grep", "Glob", "Bash"] + [t for t in w if any(k in t for k in (
+            tools=["Read", "Grep", "Glob"] + [t for t in w if any(k in t for k in (
                 "promote_claim", "set_claim_status", "create_wiki_page",
                 "update_wiki_page", "list_pending"))],
             model=model,

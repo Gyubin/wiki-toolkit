@@ -24,11 +24,13 @@ def build_options(vault: Path) -> ClaudeAgentOptions:
     # 게이트를 우회하지 못하게 한다. GATED_TOOLS는 사전 승인에서 빼야 can_use_tool이 불린다.
     allowed = ["Read", "Grep", "Glob",
                *[t for t in WIKI_TOOL_NAMES if t not in GATED_TOOLS]]
+    # permission_mode는 반드시 default: acceptEdits는 cwd(vault) 안의 Write/Edit를
+    # can_use_tool 도달 전에 자동 승인해서 RAW_MUTATION_TOOLS deny를 무력화한다.
     return ClaudeAgentOptions(
         system_prompt=_SYSTEM,
         model=model_name(),
         cwd=str(vault),
-        permission_mode="acceptEdits",
+        permission_mode="default",
         mcp_servers={"wiki": server},
         allowed_tools=allowed,
         agents=build_subagents(),

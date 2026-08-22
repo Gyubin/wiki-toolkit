@@ -1,6 +1,7 @@
 """Wrap pure core functions as in-process MCP @tools for the agent."""
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 from claude_agent_sdk import create_sdk_mcp_server, tool
@@ -43,12 +44,25 @@ _INT = {"type": "integer"}
 _STR_LIST = {"type": "array", "items": {"type": "string"}}
 
 
+def resolve_wiki_page_path(vault: Path, rel: str) -> Path:
+    """update_wiki_page 대상은 03_Resources 하위로만 한정한다.
+
+    vault 전체를 열어두면 클레임 파일의 status를 게이트 없이 바꾸는 우회로가 된다.
+    """
+    root = (Path(vault) / "03_Resources").resolve()
+    p = (Path(vault) / rel).resolve()
+    if not p.is_relative_to(root):
+        raise ValueError("update_wiki_page can only touch pages under 03_Resources")
+    return p
+
+
 def build_wiki_server(vault: Path):
     vault = Path(vault)
 
-    def _done(text: str) -> dict:
-        # 쓰기 도구 공통: 감사 추적용 vault 자동 커밋 (git repo 아니면 무동작)
-        git.commit_vault(vault, f"wiki: {text}")
+    def _done(text: str, paths: list[str]) -> dict:
+        # 쓰기 도구 공통: 감사 추적용 vault 자동 커밋 (git repo 아니면 무동작).
+        # paths로 스테이징을 한정해 사용자의 무관한 수동 편집을 쓸어 담지 않는다.
+        git.commit_vault(vault, f"wiki: {text}", paths=[*paths, "06_Metadata"])
         return _ok(text)
 
     @tool("create_source", "Capture a raw clip as a source in the Inbox",
@@ -62,13 +76,13 @@ def build_wiki_server(vault: Path):
             seq=ids.next_seq(vault, "source", schema.today_str(), ["00_Inbox"]),
             url=args.get("url"),
         )
-        return _done(f"created {p.stem}")
+        return _done(f"created {p.stem}", ["00_Inbox"])
 
     @tool("triage_record", "Record a triage decision (drop|keep-as-link|deep)",
           {"source_id": str, "decision": str})
     async def triage_record(args):
         sources.triage_record(vault, args["source_id"], args["decision"], schema.today_str())
-        return _done("recorded")
+        return _done("recorded", [])
 
     @tool("create_claim", "Create an atomic claim (always unverified). "
           "Always pass source_refs so the claim stays source-linked.",
@@ -81,7 +95,7 @@ def build_wiki_server(vault: Path):
             seq=ids.next_seq(vault, "claim", schema.today_str(), ["10_Claims"]),
             proposed_status=args.get("proposed_status"), speaker=args.get("speaker"),
         )
-        return _done(f"created {p.stem} (unverified)")
+        return _done(f"created {p.stem} (unverified)", ["10_Claims"])
 
     @tool("find_similar_claim", "Find duplicate claims by normalized key",
           _schema({"claim": _STR}, {"speaker": _STR}))
@@ -101,7 +115,7 @@ def build_wiki_server(vault: Path):
             evidence_refs=args.get("evidence_refs"),
             date_str=schema.today_str(),
         )
-        return _done(f"promoted {p.stem} -> {args['target_status']}")
+        return _done(f"promoted {p.stem} -> {args['target_status']}", ["10_Claims"])
 
     @tool("set_claim_status", "Set a non-verified status (disputed/outdated/rejected)",
           _schema({"claim_id": _STR, "status": _STR}, {"superseded_by": _STR}))
@@ -110,7 +124,7 @@ def build_wiki_server(vault: Path):
             vault, args["claim_id"], status=args["status"],
             superseded_by=args.get("superseded_by"), date_str=schema.today_str(),
         )
-        return _done(f"set {p.stem} -> {args['status']}")
+        return _done(f"set {p.stem} -> {args['status']}", ["10_Claims"])
 
     @tool("list_pending", "List pending (unverified) claims", {})
     async def list_pending(args):
@@ -127,20 +141,18 @@ def build_wiki_server(vault: Path):
             claim_refs=args.get("claim_refs", []), date_str=schema.today_str(),
             domain=args.get("domain"),
         )
-        return _done(f"created {p.name}")
+        return _done(f"created {p.name}", ["03_Resources"])
 
     @tool("update_wiki_page", "Update an existing wiki page (body, claim_refs, status)",
           _schema({"path": _STR},
                   {"body": _STR, "add_claim_refs": _STR_LIST, "status": _STR}))
     async def update_wiki_page(args):
-        p = (vault / args["path"]).resolve()
-        if not p.is_relative_to(vault.resolve()):
-            raise ValueError("path must stay inside the vault")
+        p = resolve_wiki_page_path(vault, args["path"])
         wiki.update_wiki_page(
             p, body=args.get("body"),
             add_claim_refs=args.get("add_claim_refs"), status=args.get("status"),
         )
-        return _done(f"updated {p.name}")
+        return _done(f"updated {p.name}", ["03_Resources"])
 
     @tool("create_learning_item", "Create a learning item / flashcard",
           _schema({"topic": _STR, "skill_area": _STR},
@@ -152,7 +164,7 @@ def build_wiki_server(vault: Path):
             seq=ids.next_seq(vault, "learning", schema.today_str(), ["30_Learning"]),
             wiki_refs=args.get("wiki_refs", []), source_refs=args.get("source_refs", []),
         )
-        return _done(f"created {p.stem}")
+        return _done(f"created {p.stem}", ["30_Learning"])
 
     @tool("list_due_reviews", "List learning items due for review today", {})
     async def list_due_reviews(args):
@@ -166,7 +178,7 @@ def build_wiki_server(vault: Path):
             vault, args["learning_id"], passed=bool(args["passed"]),
             today_str=schema.today_str(),
         )
-        return _done(f"recorded {p.stem}")
+        return _done(f"recorded {p.stem}", ["30_Learning"])
 
     @tool("collect_git_session",
           "Read a repo's diff/commits/changed files for base..head (read-only)",
@@ -190,7 +202,7 @@ def build_wiki_server(vault: Path):
             date_str=schema.today_str(),
             seq=ids.next_seq(vault, "session", schema.today_str(), [f"01_Projects/{slug}"]),
         )
-        return _done(f"created {p.stem}")
+        return _done(f"created {p.stem}", ["01_Projects"])
 
     @tool("create_decision",
           "Write an ADR under 01_Projects/<repo>/decisions (sensitivity=work)",
@@ -204,14 +216,15 @@ def build_wiki_server(vault: Path):
             consequences=args["consequences"], date_str=schema.today_str(),
             seq=ids.next_seq(vault, "decision", schema.today_str(), [f"01_Projects/{slug}"]),
         )
-        return _done(f"created {p.stem}")
+        return _done(f"created {p.stem}", ["01_Projects"])
 
     _index_cache = search.IndexCache(vault)
 
     @tool("search_wiki", "Hybrid semantic+lexical search over the vault",
           _schema({"query": _STR}, {"k": _INT}))
     async def search_wiki(args):
-        results = _index_cache.get().query(args["query"], int(args.get("k", 8)))
+        results = await asyncio.to_thread(
+            lambda: _index_cache.get().query(args["query"], int(args.get("k", 8))))
         text = "\n".join(f"- [{r['ref']}] {r['title']} (score {r['score']})"
                          for r in results) or "no results"
         return _ok(text)

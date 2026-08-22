@@ -57,7 +57,9 @@ def find_similar_claim(vault: Path, claim_text: str, speaker: str | None = None)
     hits = []
     for p in (Path(vault) / "10_Claims").rglob("claim-*.md"):
         meta, _ = schema.parse_doc(p.read_text(encoding="utf-8"))
-        if normalize_key(meta.get("claim", ""), meta.get("speaker") or None) == key:
+        if not meta.get("id") or not meta.get("claim"):
+            continue  # 손상 파일 하나가 전체 조회를 죽이면 안 된다 (lint가 보고한다)
+        if normalize_key(meta["claim"], meta.get("speaker") or None) == key:
             hits.append(meta["id"])
     return hits
 
@@ -110,6 +112,8 @@ def list_pending(vault: Path) -> list[dict]:
     rows = []
     for p in (Path(vault) / "10_Claims/pending").glob("claim-*.md"):
         meta, _ = schema.parse_doc(p.read_text(encoding="utf-8"))
+        if not meta.get("id"):
+            continue  # 손상 파일 하나가 목록 전체를 죽이면 안 된다 (lint가 보고한다)
         rows.append({"id": meta["id"], "claim": meta.get("claim", ""),
                      "claim_type": meta.get("claim_type", ""),
                      "proposed_status": meta.get("proposed_status", "")})

@@ -25,3 +25,14 @@ def test_search_tool_name_present():
 
 def test_update_wiki_page_tool_present():
     assert "mcp__wiki__update_wiki_page" in tools.WIKI_TOOL_NAMES
+
+
+def test_update_wiki_page_is_confined_to_resources(vault):
+    import pytest
+    p = tools.resolve_wiki_page_path(vault, "03_Resources/Concepts/some-page.md")
+    assert p.name == "some-page.md"
+    with pytest.raises(ValueError):
+        # 클레임 파일 status를 게이트 없이 바꾸는 우회로가 되면 안 된다
+        tools.resolve_wiki_page_path(vault, "10_Claims/pending/claim-20260101-001.md")
+    with pytest.raises(ValueError):
+        tools.resolve_wiki_page_path(vault, "03_Resources/../10_Claims/x.md")

@@ -27,6 +27,24 @@ def _origin_allowed(origin: str) -> bool:
     return urlparse(origin).hostname in _LOCAL_HOSTS
 
 
+def _host_allowed(host_header: str) -> bool:
+    # DNS 리바인딩 방어: 공격자 도메인이 127.0.0.1로 리졸브되면 Origin 없는 GET이
+    # 같은 오리진으로 취급돼 응답까지 읽힌다. Host가 로컬이 아니면 거부한다.
+    # "testserver"는 FastAPI TestClient의 기본 Host (브라우저로는 보낼 수 없는 값).
+    host = urlparse(f"//{host_header}").hostname
+    return host in (_LOCAL_HOSTS | {"testserver"})
+
+
+# HTTP 200으로 내려오는 봇 차단 페이지는 저장해봐야 쓰레기다 (실제 사고 사례: x.com)
+_BOTWALL_MARKERS = (
+    "JavaScript is not available",
+    "Enable JavaScript and cookies to continue",
+    "Attention Required! | Cloudflare",
+    "Checking if the site connection is secure",
+)
+_MIN_CAPTURE_CHARS = 200
+
+
 class CaptureBody(BaseModel):
     origin: str = "manual"
     content: str | None = None
@@ -57,6 +75,9 @@ def create_app(vault: Path, embed_fn=None) -> FastAPI:
         origin = request.headers.get("origin")
         if origin and not _origin_allowed(origin):
             return JSONResponse({"detail": "forbidden origin"}, status_code=403)
+        host = request.headers.get("host")
+        if host and not _host_allowed(host):
+            return JSONResponse({"detail": "forbidden host"}, status_code=403)
         return await call_next(request)
 
     @app.exception_handler(FileNotFoundError)
@@ -85,13 +106,17 @@ def create_app(vault: Path, embed_fn=None) -> FastAPI:
             except httpx.HTTPError as e:
                 return JSONResponse({"detail": f"failed to fetch URL: {e}"}, status_code=502)
             content = sources.html_to_markdown(resp.text)
+            if len(content) < _MIN_CAPTURE_CHARS or any(m in content for m in _BOTWALL_MARKERS):
+                return JSONResponse(
+                    {"detail": "capture looks like a bot-wall or near-empty page; not saved"},
+                    status_code=422)
         path = sources.create_source(
             vault, origin=body.origin, content=content or "",
             sensitivity=body.sensitivity, date_str=schema.today_str(),
             seq=ids.next_seq(vault, "source", schema.today_str(), ["00_Inbox"]),
             url=body.url,
         )
-        git.commit_vault(vault, f"wiki: captured {path.stem}")
+        git.commit_vault(vault, f"wiki: captured {path.stem}", paths=["00_Inbox", "06_Metadata"])
         return {"id": path.stem}
 
     @app.get("/claims/pending")
@@ -102,14 +127,15 @@ def create_app(vault: Path, embed_fn=None) -> FastAPI:
     def approve(cid: str):
         p = claims.promote_claim(vault, cid, target_status="verified",
                                  approved_by_human=True, date_str=schema.today_str())
-        git.commit_vault(vault, f"wiki: human approved {cid} -> verified")
+        git.commit_vault(vault, f"wiki: human approved {cid} -> verified",
+                         paths=["10_Claims", "06_Metadata"])
         return {"id": cid, "status": "verified", "path": str(p)}
 
     @app.post("/claims/{cid}/reject")
     def reject(cid: str):
         p = claims.set_claim_status(vault, cid, status="rejected",
                                     date_str=schema.today_str())
-        git.commit_vault(vault, f"wiki: human rejected {cid}")
+        git.commit_vault(vault, f"wiki: human rejected {cid}", paths=["10_Claims", "06_Metadata"])
         return {"id": cid, "status": "rejected", "path": str(p)}
 
     @app.get("/reviews/due")
@@ -119,7 +145,8 @@ def create_app(vault: Path, embed_fn=None) -> FastAPI:
     @app.post("/reviews/{lid}/record")
     def record(lid: str, passed: bool = True):
         p = learning.record_review(vault, lid, passed=passed, today_str=schema.today_str())
-        git.commit_vault(vault, f"wiki: review {lid} passed={passed}")
+        git.commit_vault(vault, f"wiki: review {lid} passed={passed}",
+                         paths=["30_Learning", "06_Metadata"])
         return {"id": lid, "path": str(p)}
 
     @app.get("/lint")
@@ -177,8 +204,12 @@ def _attach_chat(app: FastAPI, vault: Path) -> None:
                     state["session"] = session
                 async for chunk in state["session"].ask(prompt):
                     yield _event(chunk)
-            except Exception as e:
+            except BaseException as e:  # noqa: BLE001
+                # GeneratorExit(클라이언트 끊김)도 잡는다: 턴 중간에 끊긴 세션을
+                # 재사용하면 다음 질문의 응답에 이전 턴 잔여 메시지가 섞인다.
                 await _close_session()
+                if isinstance(e, GeneratorExit | asyncio.CancelledError):
+                    raise
                 yield _event({"error": str(e)})
         yield "data: [DONE]\n\n"
 

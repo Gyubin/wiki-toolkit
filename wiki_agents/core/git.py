@@ -17,17 +17,23 @@ def _git(repo: Path, *args: str) -> str:
     return out.stdout
 
 
-def commit_vault(vault: Path, message: str) -> bool:
+def commit_vault(vault: Path, message: str, paths: list[str] | None = None) -> bool:
     """vault가 git repo면 변경을 커밋한다 (설계 문서의 인식론적 감사 추적).
 
+    paths는 이번 쓰기가 건드린 최상위 디렉터리 목록. 경로를 한정해야 사용자가
+    Obsidian에서 고치던 무관한 파일이 에이전트 커밋에 쓸려 들어가지 않는다.
     실패는 조용히 False: 감사 추적이 쓰기 자체를 막으면 안 된다.
+    --no-verify: 에이전트의 감사 커밋이 사용자 훅 실패로 막히지 않게 한다.
     """
     vault = Path(vault)
     if not (vault / ".git").exists():
         return False
+    scope = [p for p in (paths or ["."]) if (vault / p).exists()]
+    if not scope:
+        return False
     try:
         subprocess.run(  # noqa: S603
-            ["git", "-C", str(vault), "add", "-A"],  # noqa: S607
+            ["git", "-C", str(vault), "add", "-A", "--", *scope],  # noqa: S607
             capture_output=True, check=True,
         )
         r = subprocess.run(  # noqa: S603

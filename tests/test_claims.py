@@ -98,6 +98,20 @@ def test_korean_duplicate_still_detected(vault):
     assert hits == ["claim-20260607-001"]
 
 
+def test_list_pending_survives_malformed_file(vault):
+    _make(vault, seq=1)
+    (vault / "10_Claims/pending/claim-20260607-999.md").write_text(
+        "---\nbroken, no closing fence", encoding="utf-8")
+    rows = claims.list_pending(vault)  # 파일 하나 때문에 전체가 죽으면 안 된다
+    assert any(r["id"] == "claim-20260607-001" for r in rows)
+
+
+def test_find_similar_survives_malformed_file(vault):
+    (vault / "10_Claims/pending/claim-20260607-999.md").write_text(
+        "---\nbroken, no closing fence", encoding="utf-8")
+    assert claims.find_similar_claim(vault, "anything at all") == []
+
+
 def test_index_lines_contain_no_em_dash(vault):
     _make(vault, seq=1)
     text = (vault / "06_Metadata/indexes/claim-index.md").read_text(encoding="utf-8")

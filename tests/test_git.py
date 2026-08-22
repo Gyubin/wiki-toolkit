@@ -62,3 +62,16 @@ def test_commit_vault_nothing_to_commit(vault):
     _git_vault(vault)
     git.commit_vault(vault, "first")
     assert git.commit_vault(vault, "empty") is False
+
+
+def test_commit_vault_scoped_paths_leave_user_edits_alone(vault):
+    _git_vault(vault)
+    git.commit_vault(vault, "seed")
+    user_note = vault / "02_Areas" / "my-note.md"
+    user_note.write_text("사용자가 Obsidian에서 고치는 중\n", encoding="utf-8")
+    (vault / "10_Claims/pending/claim-20260101-001.md").write_text("x", encoding="utf-8")
+    assert git.commit_vault(vault, "wiki: created claim",
+                            paths=["10_Claims", "06_Metadata"]) is True
+    status = subprocess.run(["git", "-C", str(vault), "status", "--short"],
+                            capture_output=True, text=True).stdout
+    assert "my-note.md" in status  # 사용자 편집은 커밋되지 않고 남아 있어야 한다

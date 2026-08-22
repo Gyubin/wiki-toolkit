@@ -81,6 +81,20 @@ def test_due_reviews_survive_yaml_date_values(vault):
     assert any(d["id"] == "learning-20260607-001" for d in due)
 
 
+def test_record_review_fail_without_level_key(vault):
+    # level 키가 아예 없는 파일을 불합격 처리해도 KeyError 없이 동작해야 한다
+    path = learning.create_learning_item(
+        vault, topic="t", skill_area="frontend", date_str="2026-06-07", seq=1,
+    )
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("level: unknown\n", ""), encoding="utf-8")
+    path = learning.record_review(
+        vault, "learning-20260607-001", passed=False, today_str="2026-06-08",
+    )
+    meta, _ = schema.parse_doc(path.read_text(encoding="utf-8"))
+    assert meta["level"] in schema.LEARNING_LEVELS
+
+
 def test_record_review_tolerates_unknown_level_value(vault):
     path = learning.create_learning_item(
         vault, topic="t", skill_area="frontend", date_str="2026-06-07", seq=1,
