@@ -1,5 +1,5 @@
 from wiki_agents import schema
-from wiki_agents.core import claims, lint, wiki
+from wiki_agents.core import claims, index, lint, wiki
 
 
 def _seed(vault):
@@ -49,3 +49,39 @@ def test_clean_vault_no_findings(vault):
     claims.create_claim(vault, claim="clean unique claim", claim_type="technical_fact",
                         source_refs=["s1"], date_str="2026-01-02", seq=1)
     assert lint.run_checks(vault, "2026-06-07") == []
+
+
+def test_unparseable_file_is_reported_not_skipped(vault):
+    (vault / "10_Claims/pending/claim-20260101-009.md").write_text(
+        "---\nfoo: [unclosed\n---\n\nbody\n", encoding="utf-8")
+    findings = lint.run_checks(vault, "2026-06-07")
+    hits = [f for f in findings if f["check"] == "unparseable"]
+    assert hits and hits[0]["severity"] == "error"
+    assert "claim-20260101-009" in hits[0]["ref"]
+
+
+def test_duplicate_id_across_folders_is_reported(vault):
+    meta = {"type": "claim", "id": "claim-20260101-001", "claim_type": "technical_fact",
+            "status": "unverified", "claim": "one two three", "speaker": "",
+            "source_refs": ["s"], "evidence_refs": [], "sensitivity": "personal"}
+    doc = schema.render_doc(meta, "## Claim\n\nx\n")
+    (vault / "10_Claims/pending/claim-20260101-001.md").write_text(doc, encoding="utf-8")
+    (vault / "10_Claims/verified/claim-20260101-001.md").write_text(doc, encoding="utf-8")
+    findings = lint.run_checks(vault, "2026-06-07")
+    assert any(f["check"] == "duplicate_id" and f["severity"] == "error"
+               for f in findings)
+
+
+def test_dangling_index_entry_is_reported(vault):
+    index.update_index(vault, "claim-index", "claim-19990101-001", "ghost - unverified")
+    findings = lint.run_checks(vault, "2026-06-07")
+    hits = [f for f in findings if f["check"] == "index_dangling"]
+    assert hits and hits[0]["ref"] == "claim-19990101-001"
+
+
+def test_inbox_clip_without_frontmatter_is_visible(vault):
+    (vault / "00_Inbox/raw/some-web-clip.md").write_text(
+        "# Clipped page\n\nno frontmatter here\n", encoding="utf-8")
+    findings = lint.run_checks(vault, "2026-06-07")
+    assert any(f["check"] == "inbox_unstructured" and f["severity"] == "info"
+               for f in findings)
