@@ -2,6 +2,8 @@
 never hardcode cwd. Guards the code/vault separation (harness engineering)."""
 from pathlib import Path
 
+import pytest
+
 import wiki_agents.__main__ as cli
 
 
@@ -20,14 +22,15 @@ def test_resolve_vault_cwd_default(monkeypatch):
     assert cli.resolve_vault(None) == Path.cwd()
 
 
-def test_search_uses_resolved_vault(monkeypatch, tmp_path):
-    """`search` must index the resolved vault, not Path.cwd()."""
-    monkeypatch.setenv("WIKI_VAULT", str(tmp_path))
-    seen = {}
+class _Idx:
+    def query(self, q, k):
+        return []
 
-    class _Idx:
-        def query(self, q, k):
-            return []
+
+def test_search_uses_resolved_vault(monkeypatch, vault):
+    """`search` must index the resolved vault, not Path.cwd()."""
+    monkeypatch.setenv("WIKI_VAULT", str(vault))
+    seen = {}
 
     def fake_build_index(path):
         seen["path"] = path
@@ -36,16 +39,70 @@ def test_search_uses_resolved_vault(monkeypatch, tmp_path):
     monkeypatch.setattr(cli.search_core, "build_index", fake_build_index)
     monkeypatch.setattr(cli.sys, "argv", ["wiki", "search", "hello", "world"])
     cli.main()
-    assert seen["path"] == tmp_path
+    assert seen["path"] == vault
 
 
-def test_serve_uses_passed_vault(monkeypatch, tmp_path):
-    """`serve <vault>` must scaffold/serve the passed path, not cwd."""
+def test_search_accepts_leading_vault_dir(monkeypatch, vault):
     seen = {}
-    monkeypatch.setattr(cli.scaffold, "scaffold_vault", lambda v: seen.setdefault("scaffold", v))
+
+    def fake_build_index(path):
+        seen["path"] = path
+        return _Idx()
+
+    monkeypatch.delenv("WIKI_VAULT", raising=False)
+    monkeypatch.setattr(cli.search_core, "build_index", fake_build_index)
+    monkeypatch.setattr(cli.sys, "argv", ["wiki", "search", str(vault), "hello"])
+    cli.main()
+    assert seen["path"] == vault
+
+
+def test_serve_uses_passed_vault(monkeypatch, vault):
+    """`serve <vault>` must serve the passed path, not cwd."""
+    seen = {}
     monkeypatch.setattr(cli, "create_app", lambda v: seen.setdefault("app", v))
     monkeypatch.setattr(cli.uvicorn, "run", lambda *a, **k: None)
-    monkeypatch.setattr(cli.sys, "argv", ["wiki", "serve", str(tmp_path)])
+    monkeypatch.setattr(cli.sys, "argv", ["wiki", "serve", str(vault)])
     cli.main()
-    assert seen["scaffold"] == tmp_path
-    assert seen["app"] == tmp_path
+    assert seen["app"] == vault
+
+
+def test_serve_refuses_non_vault_dir(monkeypatch, tmp_path):
+    """scaffold는 init 전용: serve가 아무 디렉토리나 vault 구조로 오염시키면 안 된다."""
+    monkeypatch.setattr(cli.sys, "argv", ["wiki", "serve", str(tmp_path)])
+    with pytest.raises(SystemExit) as e:
+        cli.main()
+    assert e.value.code == 2
+    assert not (tmp_path / "06_Metadata").exists()  # 아무것도 만들지 않았다
+
+
+def test_lint_is_report_only_and_refuses_non_vault(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli.sys, "argv", ["wiki", "lint", str(tmp_path)])
+    with pytest.raises(SystemExit) as e:
+        cli.main()
+    assert e.value.code == 2
+    assert list(tmp_path.iterdir()) == []  # lint가 디렉토리를 만들면 안 된다
+
+
+def test_lint_exit_code_reflects_errors(monkeypatch, vault):
+    monkeypatch.setattr(cli.lint_core, "run_checks",
+                        lambda v, d: [{"severity": "error", "check": "x",
+                                       "ref": "r", "message": "m"}])
+    monkeypatch.setattr(cli.sys, "argv", ["wiki", "lint", str(vault)])
+    with pytest.raises(SystemExit) as e:
+        cli.main()
+    assert e.value.code == 1
+
+
+def test_unknown_command_exits_nonzero(monkeypatch):
+    monkeypatch.setattr(cli.sys, "argv", ["wiki", "frobnicate"])
+    with pytest.raises(SystemExit) as e:
+        cli.main()
+    assert e.value.code == 2
+
+
+def test_mcp_subcommand_dispatches(monkeypatch, vault):
+    seen = {}
+    monkeypatch.setattr(cli, "_run_mcp_stdio", lambda v: seen.setdefault("vault", v))
+    monkeypatch.setattr(cli.sys, "argv", ["wiki", "mcp", str(vault)])
+    cli.main()
+    assert seen["vault"] == vault
