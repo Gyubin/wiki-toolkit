@@ -1,7 +1,8 @@
 # Obsidian Web Clipper → Inbox
 
 1. Install the Obsidian Web Clipper browser extension.
-2. Set the vault to this folder and the default save location to `00_Inbox/browser-clips/`.
+2. Set the vault to your **vault directory** (`$WIKI_VAULT`, e.g. `~/workspace/personal-wiki/wiki-vault`;
+   NOT this code repo) and the default save location to `00_Inbox/browser-clips/`.
 3. Use a Markdown template that includes a frontmatter block:
    - `type: source`
    - `origin: browser`

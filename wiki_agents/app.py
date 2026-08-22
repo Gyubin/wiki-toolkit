@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import schema
-from .core import claims, ids, learning, lint, search, sources
+from .core import claims, git, ids, learning, lint, search, sources
 
 _WEB = Path(__file__).parent / "web"
 
@@ -91,6 +91,7 @@ def create_app(vault: Path, embed_fn=None) -> FastAPI:
             seq=ids.next_seq(vault, "source", schema.today_str(), ["00_Inbox"]),
             url=body.url,
         )
+        git.commit_vault(vault, f"wiki: captured {path.stem}")
         return {"id": path.stem}
 
     @app.get("/claims/pending")
@@ -101,12 +102,14 @@ def create_app(vault: Path, embed_fn=None) -> FastAPI:
     def approve(cid: str):
         p = claims.promote_claim(vault, cid, target_status="verified",
                                  approved_by_human=True, date_str=schema.today_str())
+        git.commit_vault(vault, f"wiki: human approved {cid} -> verified")
         return {"id": cid, "status": "verified", "path": str(p)}
 
     @app.post("/claims/{cid}/reject")
     def reject(cid: str):
         p = claims.set_claim_status(vault, cid, status="rejected",
                                     date_str=schema.today_str())
+        git.commit_vault(vault, f"wiki: human rejected {cid}")
         return {"id": cid, "status": "rejected", "path": str(p)}
 
     @app.get("/reviews/due")
@@ -116,6 +119,7 @@ def create_app(vault: Path, embed_fn=None) -> FastAPI:
     @app.post("/reviews/{lid}/record")
     def record(lid: str, passed: bool = True):
         p = learning.record_review(vault, lid, passed=passed, today_str=schema.today_str())
+        git.commit_vault(vault, f"wiki: review {lid} passed={passed}")
         return {"id": lid, "path": str(p)}
 
     @app.get("/lint")

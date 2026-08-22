@@ -4,7 +4,9 @@ Opinionated, mechanical rules. Follow them; several are enforced by tests. Read 
 for the code map and `docs/superpowers/` for the design history (ExecPlans).
 
 ## 1. Environment
-- Use **`uv`**: `uv run pytest`, `uv run ruff check`, `uv run wiki init|serve|lint|search`. Don't invoke `python`/`pip` directly.
+- Use **`uv`**: `uv run pytest`, `uv run ruff check`, `uv run wiki init|serve|lint|search|mcp`. Don't invoke `python`/`pip` directly.
+- Only `init` scaffolds. serve/lint/search/mcp **refuse** a directory without `06_Metadata/` (exit 2). lint exits 1 when error-severity findings exist.
+- `wiki mcp <vault>` exposes the same 16 tools over stdio for Claude Code: `claude mcp add wiki -- uv run --directory <this repo> wiki mcp <vault>`.
 - **The vault lives outside this repo.** Every `wiki` subcommand resolves the vault as: explicit path arg > `$WIKI_VAULT` > cwd (`resolve_vault` in `__main__.py`). Point it at your vault, e.g. `uv run wiki serve "$WIKI_VAULT"`. This repo holds **code only**.
 - The agent runtime (`WikiSession`, `/chat`, `/wrap`, `/lint/contradictions`) needs the **Claude Code CLI** installed; pure `core/` logic and the web routes that only touch `core/` do not.
 
@@ -13,7 +15,7 @@ for the code map and `docs/superpowers/` for the design history (ExecPlans).
 - `schema.py` is the **single source of truth** for enums, IDs, and frontmatter. Add a status/type there first; never inline a literal list elsewhere.
 
 ## 3. Gates and sensitivity
-- A claim becomes `verified` **only** with human approval or `evidence_refs` — `promote_claim` raises and `can_use_tool` denies otherwise. Don't bypass it.
+- A claim becomes `verified` only via `evidence_refs` (agent path) or human approval in the web Verify tab. `approved_by_human` is **not** a tool argument; the gate strips it. `promote_claim`/`set_claim_status` must stay **out of** `allowed_tools` (a preapproved tool never reaches `can_use_tool`). The main agent has no Bash/Write/Edit, so files can't be hand-edited around the gate.
 - Work/confidential content is **not refused**; it is routed to `01_Projects/<repo>/` and tagged `sensitivity`. Keep secrets/company identifiers out of `03_Resources/` and learning items.
 - `lint` is **report-only** — it never modifies the vault. Resolution is the human's job (Verify tab).
 

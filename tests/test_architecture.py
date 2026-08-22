@@ -75,6 +75,35 @@ def test_only_app_imports_web():
     assert not offenders, offenders
 
 
+_LAYER = {"__init__": 0, "schema": 0, "core": 1, "tools": 2, "permissions": 2,
+          "subagents": 3, "agent": 4, "app": 5, "__main__": 5}
+
+
+def _layer_of(f: Path) -> str:
+    rel = f.resolve().relative_to(PKG_ROOT)
+    return "core" if rel.parts[0] == "core" else rel.stem
+
+
+def test_imports_flow_upward_only():
+    """문서가 주장하는 전체 레이어 순서를 전부 기계적으로 강제한다."""
+    offenders = {}
+    for f in PKG_ROOT.rglob("*.py"):
+        src = _layer_of(f)
+        if src not in _LAYER:
+            continue
+        bad = []
+        for m in referenced_modules(f.read_text(encoding="utf-8"), _pkg_of(f)):
+            parts = m.split(".")
+            if parts[0] != "wiki_agents" or len(parts) < 2:
+                continue
+            tgt = parts[1]
+            if tgt in _LAYER and _LAYER[tgt] > _LAYER[src]:
+                bad.append(m)
+        if bad:
+            offenders[str(f.relative_to(PKG_ROOT))] = sorted(set(bad))
+    assert not offenders, offenders
+
+
 def test_checker_catches_violation():
     assert "claude_agent_sdk" in core_violations(
         "from claude_agent_sdk import tool\nfrom .. import schema\n", "wiki_agents.core")

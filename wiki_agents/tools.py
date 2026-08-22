@@ -46,6 +46,11 @@ _STR_LIST = {"type": "array", "items": {"type": "string"}}
 def build_wiki_server(vault: Path):
     vault = Path(vault)
 
+    def _done(text: str) -> dict:
+        # 쓰기 도구 공통: 감사 추적용 vault 자동 커밋 (git repo 아니면 무동작)
+        git.commit_vault(vault, f"wiki: {text}")
+        return _ok(text)
+
     @tool("create_source", "Capture a raw clip as a source in the Inbox",
           _schema({"origin": _STR, "content": _STR},
                   {"sensitivity": _STR, "url": _STR}))
@@ -57,13 +62,13 @@ def build_wiki_server(vault: Path):
             seq=ids.next_seq(vault, "source", schema.today_str(), ["00_Inbox"]),
             url=args.get("url"),
         )
-        return _ok(f"created {p.stem}")
+        return _done(f"created {p.stem}")
 
     @tool("triage_record", "Record a triage decision (drop|keep-as-link|deep)",
           {"source_id": str, "decision": str})
     async def triage_record(args):
         sources.triage_record(vault, args["source_id"], args["decision"], schema.today_str())
-        return _ok("recorded")
+        return _done("recorded")
 
     @tool("create_claim", "Create an atomic claim (always unverified). "
           "Always pass source_refs so the claim stays source-linked.",
@@ -76,7 +81,7 @@ def build_wiki_server(vault: Path):
             seq=ids.next_seq(vault, "claim", schema.today_str(), ["10_Claims"]),
             proposed_status=args.get("proposed_status"), speaker=args.get("speaker"),
         )
-        return _ok(f"created {p.stem} (unverified)")
+        return _done(f"created {p.stem} (unverified)")
 
     @tool("find_similar_claim", "Find duplicate claims by normalized key",
           _schema({"claim": _STR}, {"speaker": _STR}))
@@ -96,7 +101,7 @@ def build_wiki_server(vault: Path):
             evidence_refs=args.get("evidence_refs"),
             date_str=schema.today_str(),
         )
-        return _ok(f"promoted {p.stem} -> {args['target_status']}")
+        return _done(f"promoted {p.stem} -> {args['target_status']}")
 
     @tool("set_claim_status", "Set a non-verified status (disputed/outdated/rejected)",
           _schema({"claim_id": _STR, "status": _STR}, {"superseded_by": _STR}))
@@ -105,7 +110,7 @@ def build_wiki_server(vault: Path):
             vault, args["claim_id"], status=args["status"],
             superseded_by=args.get("superseded_by"), date_str=schema.today_str(),
         )
-        return _ok(f"set {p.stem} -> {args['status']}")
+        return _done(f"set {p.stem} -> {args['status']}")
 
     @tool("list_pending", "List pending (unverified) claims", {})
     async def list_pending(args):
@@ -122,7 +127,7 @@ def build_wiki_server(vault: Path):
             claim_refs=args.get("claim_refs", []), date_str=schema.today_str(),
             domain=args.get("domain"),
         )
-        return _ok(f"created {p.name}")
+        return _done(f"created {p.name}")
 
     @tool("update_wiki_page", "Update an existing wiki page (body, claim_refs, status)",
           _schema({"path": _STR},
@@ -135,7 +140,7 @@ def build_wiki_server(vault: Path):
             p, body=args.get("body"),
             add_claim_refs=args.get("add_claim_refs"), status=args.get("status"),
         )
-        return _ok(f"updated {p.name}")
+        return _done(f"updated {p.name}")
 
     @tool("create_learning_item", "Create a learning item / flashcard",
           _schema({"topic": _STR, "skill_area": _STR},
@@ -147,7 +152,7 @@ def build_wiki_server(vault: Path):
             seq=ids.next_seq(vault, "learning", schema.today_str(), ["30_Learning"]),
             wiki_refs=args.get("wiki_refs", []), source_refs=args.get("source_refs", []),
         )
-        return _ok(f"created {p.stem}")
+        return _done(f"created {p.stem}")
 
     @tool("list_due_reviews", "List learning items due for review today", {})
     async def list_due_reviews(args):
@@ -161,7 +166,7 @@ def build_wiki_server(vault: Path):
             vault, args["learning_id"], passed=bool(args["passed"]),
             today_str=schema.today_str(),
         )
-        return _ok(f"recorded {p.stem}")
+        return _done(f"recorded {p.stem}")
 
     @tool("collect_git_session",
           "Read a repo's diff/commits/changed files for base..head (read-only)",
@@ -185,7 +190,7 @@ def build_wiki_server(vault: Path):
             date_str=schema.today_str(),
             seq=ids.next_seq(vault, "session", schema.today_str(), [f"01_Projects/{slug}"]),
         )
-        return _ok(f"created {p.stem}")
+        return _done(f"created {p.stem}")
 
     @tool("create_decision",
           "Write an ADR under 01_Projects/<repo>/decisions (sensitivity=work)",
@@ -199,7 +204,7 @@ def build_wiki_server(vault: Path):
             consequences=args["consequences"], date_str=schema.today_str(),
             seq=ids.next_seq(vault, "decision", schema.today_str(), [f"01_Projects/{slug}"]),
         )
-        return _ok(f"created {p.stem}")
+        return _done(f"created {p.stem}")
 
     _index_cache = search.IndexCache(vault)
 

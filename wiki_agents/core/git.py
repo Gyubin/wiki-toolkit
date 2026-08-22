@@ -17,6 +17,28 @@ def _git(repo: Path, *args: str) -> str:
     return out.stdout
 
 
+def commit_vault(vault: Path, message: str) -> bool:
+    """vault가 git repo면 변경을 커밋한다 (설계 문서의 인식론적 감사 추적).
+
+    실패는 조용히 False: 감사 추적이 쓰기 자체를 막으면 안 된다.
+    """
+    vault = Path(vault)
+    if not (vault / ".git").exists():
+        return False
+    try:
+        subprocess.run(  # noqa: S603
+            ["git", "-C", str(vault), "add", "-A"],  # noqa: S607
+            capture_output=True, check=True,
+        )
+        r = subprocess.run(  # noqa: S603
+            ["git", "-C", str(vault), "commit", "--no-verify", "-m", message],  # noqa: S607
+            capture_output=True,
+        )
+        return r.returncode == 0
+    except (subprocess.SubprocessError, FileNotFoundError, OSError):
+        return False
+
+
 def collect_session(repo: Path, base: str, head: str = "HEAD") -> dict:
     repo = Path(repo)
     if not (repo / ".git").exists():
