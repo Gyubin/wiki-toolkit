@@ -80,10 +80,11 @@ def run_checks(vault: Path, today_str: str) -> list[dict]:
         mid = meta.get("id")
         if mid:
             id_files.setdefault(str(mid), []).append(rel)
+        # Web Clipper 유입물은 자체 frontmatter(title 등)는 있어도 wiki 스키마(id)가 없다
+        if rel.startswith("00_Inbox") and not mid:
+            findings.append(_f("inbox_unstructured", "info", rel,
+                               "raw clip without source schema (no id); needs ingest"))
         if not meta:
-            if rel.startswith("00_Inbox"):
-                findings.append(_f("inbox_unstructured", "info", rel,
-                                   "raw clip without source frontmatter; needs ingest"))
             continue
         ra = meta.get("review_after")
         if ra and str(ra) <= today_str:

@@ -85,3 +85,12 @@ def test_inbox_clip_without_frontmatter_is_visible(vault):
     findings = lint.run_checks(vault, "2026-06-07")
     assert any(f["check"] == "inbox_unstructured" and f["severity"] == "info"
                for f in findings)
+
+
+def test_inbox_clip_with_foreign_frontmatter_is_still_flagged(vault):
+    # Obsidian Web Clipper는 자체 frontmatter(title 등)를 붙이지만 wiki 스키마(id)는 없다
+    (vault / "00_Inbox/browser-clips/clipped.md").write_text(
+        '---\ntitle: "Some page"\nsource: "https://x.com/a"\n---\n\nbody\n',
+        encoding="utf-8")
+    findings = lint.run_checks(vault, "2026-06-07")
+    assert any(f["check"] == "inbox_unstructured" for f in findings)
