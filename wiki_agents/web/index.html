@@ -28,8 +28,9 @@
   <main>
     <section id="chat" class="panel active">
       <div id="log"></div>
-      <input id="prompt" style="width:80%" placeholder="이거 인제스트해줘 / X에 대해 답해줘" />
+      <input id="prompt" style="width:72%" placeholder="이거 인제스트해줘 / X에 대해 답해줘" />
       <button onclick="send()">Send</button>
+      <button onclick="resetChat()">새 대화</button>
     </section>
     <section id="capture" class="panel">
       <textarea id="capContent" placeholder="대화/텍스트 붙여넣기"></textarea>
@@ -72,17 +73,48 @@
       b.classList.add('active');
       document.getElementById(b.dataset.tab).classList.add('active');
     });
+    // vault 내용(클리핑한 웹 유래)은 신뢰 불가: 항상 이스케이프해서 렌더링한다
+    function esc(s) {
+      return String(s).replace(/[&<>"']/g, c => (
+        {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+    // SSE 공용 파서: 청크 경계가 멀티바이트 문자나 프레임 중간에 걸려도 안전하게,
+    // "\n\n" 단위로 잘라 JSON 페이로드를 onChunk로 넘긴다
+    async function readStream(res, onChunk) {
+      if (!res.ok) { onChunk({error: 'HTTP ' + res.status}); return; }
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const {value, done} = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, {stream: true});
+        let i;
+        while ((i = buf.indexOf('\n\n')) !== -1) {
+          const ev = buf.slice(0, i); buf = buf.slice(i + 2);
+          if (!ev.startsWith('data: ')) continue;
+          const payload = ev.slice(6);
+          if (payload === '[DONE]') return;
+          onChunk(JSON.parse(payload));
+        }
+      }
+    }
+    function appendChunk(el) {
+      return chunk => {
+        if (typeof chunk === 'string') el.textContent += chunk;
+        else if (chunk && chunk.error) el.textContent += '\n[오류] ' + chunk.error + '\n';
+      };
+    }
     async function send() {
       const prompt = document.getElementById('prompt').value;
       const log = document.getElementById('log');
       log.textContent += '\n> ' + prompt + '\n';
       const res = await fetch('/chat', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({prompt})});
-      const reader = res.body.getReader(); const dec = new TextDecoder();
-      while (true) { const {value, done} = await reader.read(); if (done) break;
-        dec.decode(value).split('\n').forEach(l => {
-          if (l.startsWith('data: ') && l !== 'data: [DONE]') log.textContent += l.slice(6);
-        });
-      }
+      await readStream(res, appendChunk(log));
+    }
+    async function resetChat() {
+      await fetch('/chat/reset', {method: 'POST'});
+      document.getElementById('log').textContent = '(새 대화)\n';
     }
     async function wrapRun() {
       const body = {
@@ -94,34 +126,24 @@
       const log = document.getElementById('wrapLog');
       log.textContent = 'wrapping...\n';
       const res = await fetch('/wrap', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
-      const reader = res.body.getReader(); const dec = new TextDecoder();
-      while (true) { const {value, done} = await reader.read(); if (done) break;
-        dec.decode(value).split('\n').forEach(l => {
-          if (l.startsWith('data: ') && l !== 'data: [DONE]') log.textContent += l.slice(6);
-        });
-      }
+      await readStream(res, appendChunk(log));
     }
     async function loadLint() {
       const rows = await (await fetch('/lint')).json();
       document.getElementById('lintFindings').innerHTML = rows.map(f =>
-        `<div class="row">[${f.severity}] ${f.check} — ${f.ref}: ${f.message}</div>`).join('') || '깨끗함';
+        `<div class="row">[${esc(f.severity)}] ${esc(f.check)} - ${esc(f.ref)}: ${esc(f.message)}</div>`).join('') || '깨끗함';
     }
     async function lintContradictions() {
       const out = document.getElementById('lintContra');
       out.textContent = 'checking...\n';
       const res = await fetch('/lint/contradictions', {method: 'POST'});
-      const reader = res.body.getReader(); const dec = new TextDecoder();
-      while (true) { const {value, done} = await reader.read(); if (done) break;
-        dec.decode(value).split('\n').forEach(l => {
-          if (l.startsWith('data: ') && l !== 'data: [DONE]') out.textContent += l.slice(6);
-        });
-      }
+      await readStream(res, appendChunk(out));
     }
     async function searchRun() {
       const q = document.getElementById('searchQ').value;
       const rows = await (await fetch('/search?q=' + encodeURIComponent(q))).json();
       document.getElementById('searchResults').innerHTML = rows.map(r =>
-        `<div class="row"><b>${r.title}</b> <small>[${r.ref}] ${r.score}</small><br>${r.snippet}</div>`
+        `<div class="row"><b>${esc(r.title)}</b> <small>[${esc(r.ref)}] ${esc(r.score)}</small><br>${esc(r.snippet)}</div>`
       ).join('') || '결과 없음';
     }
     async function capture() {
@@ -133,20 +155,20 @@
     async function loadPending() {
       const rows = await (await fetch('/claims/pending')).json();
       document.getElementById('pending').innerHTML = rows.map(r =>
-        `<div class="row">${r.id}: ${r.claim}
-         <button class="act" onclick="approve('${r.id}')">승인</button>
-         <button class="act" onclick="reject('${r.id}')">거부</button></div>`).join('') || '없음';
+        `<div class="row">${esc(r.id)}: ${esc(r.claim)}
+         <button class="act" onclick="approve('${esc(r.id)}')">승인</button>
+         <button class="act" onclick="reject('${esc(r.id)}')">거부</button></div>`).join('') || '없음';
     }
-    async function approve(id) { await fetch(`/claims/${id}/approve`, {method: 'POST'}); loadPending(); }
-    async function reject(id) { await fetch(`/claims/${id}/reject`, {method: 'POST'}); loadPending(); }
+    async function approve(id) { await fetch(`/claims/${encodeURIComponent(id)}/approve`, {method: 'POST'}); loadPending(); }
+    async function reject(id) { await fetch(`/claims/${encodeURIComponent(id)}/reject`, {method: 'POST'}); loadPending(); }
     async function loadDue() {
       const rows = await (await fetch('/reviews/due')).json();
       document.getElementById('due').innerHTML = rows.map(r =>
-        `<div class="row">${r.id}: ${r.topic} (${r.level})
-         <button class="act" onclick="rec('${r.id}',true)">통과</button>
-         <button class="act" onclick="rec('${r.id}',false)">실패</button></div>`).join('') || '없음';
+        `<div class="row">${esc(r.id)}: ${esc(r.topic)} (${esc(r.level)})
+         <button class="act" onclick="rec('${esc(r.id)}',true)">통과</button>
+         <button class="act" onclick="rec('${esc(r.id)}',false)">실패</button></div>`).join('') || '없음';
     }
-    async function rec(id, passed) { await fetch(`/reviews/${id}/record?passed=${passed}`, {method: 'POST'}); loadDue(); }
+    async function rec(id, passed) { await fetch(`/reviews/${encodeURIComponent(id)}/record?passed=${passed}`, {method: 'POST'}); loadDue(); }
   </script>
 </body>
 </html>

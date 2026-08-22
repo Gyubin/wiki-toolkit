@@ -1,6 +1,25 @@
+import json
+
 from fastapi.testclient import TestClient
 
 from wiki_agents.app import create_app
+
+
+class _FakeSession:
+    instances = 0
+
+    def __init__(self, vault):
+        _FakeSession.instances += 1
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return None
+
+    async def ask(self, prompt):
+        yield "첫 줄\n둘째 줄"
+        yield "이어지는 답"
 
 
 def test_capture_and_pending(vault):
@@ -97,3 +116,75 @@ def test_search_route(vault):
     rows = r.json()
     assert isinstance(rows, list) and rows
     assert "react" in rows[0]["title"].lower()
+
+
+def test_approve_missing_claim_is_404_not_500(vault):
+    client = TestClient(create_app(vault))
+    r = client.post("/claims/claim-19990101-001/approve")
+    assert r.status_code == 404
+
+
+def test_capture_bad_url_is_502(vault, monkeypatch):
+    import httpx
+
+    from wiki_agents import app as app_mod
+
+    def boom(*a, **k):
+        raise httpx.ConnectError("nope")
+
+    monkeypatch.setattr(app_mod.httpx, "get", boom)
+    client = TestClient(create_app(vault))
+    r = client.post("/capture", json={"origin": "web", "url": "http://x.invalid"})
+    assert r.status_code == 502
+
+
+def test_cross_origin_browser_requests_are_rejected(vault):
+    client = TestClient(create_app(vault))
+    r = client.post("/capture", json={"origin": "web", "content": "x"},
+                    headers={"Origin": "https://evil.example"})
+    assert r.status_code == 403
+    r = client.post("/capture", json={"origin": "web", "content": "x"},
+                    headers={"Origin": "http://127.0.0.1:8765"})
+    assert r.status_code == 200
+    r = client.post("/capture", json={"origin": "ext", "content": "y"},
+                    headers={"Origin": "chrome-extension://abcdef"})
+    assert r.status_code == 200
+
+
+def _chat_events(text):
+    events = []
+    for block in text.split("\n\n"):
+        block = block.strip()
+        if not block:
+            continue
+        assert block.startswith("data: ")
+        events.append(block[len("data: "):])
+    return events
+
+
+def test_chat_sse_preserves_multiline_chunks(vault, monkeypatch):
+    from wiki_agents import agent as agent_mod
+    _FakeSession.instances = 0
+    monkeypatch.setattr(agent_mod, "WikiSession", _FakeSession)
+    client = TestClient(create_app(vault))
+    r = client.post("/chat", json={"prompt": "안녕"})
+    assert r.status_code == 200
+    events = _chat_events(r.text)
+    assert events[-1] == "[DONE]"
+    payloads = [json.loads(e) for e in events[:-1]]
+    assert "첫 줄\n둘째 줄" in payloads  # 개행이 든 청크가 통째로 보존된다
+
+
+def test_chat_session_persists_across_requests(vault, monkeypatch):
+    from wiki_agents import agent as agent_mod
+    _FakeSession.instances = 0
+    monkeypatch.setattr(agent_mod, "WikiSession", _FakeSession)
+    client = TestClient(create_app(vault))
+    client.post("/chat", json={"prompt": "하나"})
+    client.post("/chat", json={"prompt": "둘"})
+    assert _FakeSession.instances == 1  # 요청마다 새 세션을 만들면 안 된다
+
+    r = client.post("/chat/reset")
+    assert r.status_code == 200
+    client.post("/chat", json={"prompt": "셋"})
+    assert _FakeSession.instances == 2  # reset 후에만 새 세션
