@@ -60,3 +60,22 @@ async def test_allow_other_tools(vault):
     gate = permissions.make_can_use_tool(vault)
     res = await gate("Read", {"file_path": "x"}, None)
     assert res.behavior == "allow"
+
+
+@pytest.mark.asyncio
+async def test_main_agent_raw_exec_denied(vault):
+    # allowed_tools에서 뺀 것만으로는 부족하다: 콜백이 Allow를 돌려주면 그대로 실행된다
+    gate = permissions.make_can_use_tool(vault)
+    for tool in ("Bash", "Write", "Edit"):
+        res = await gate(tool, {"command": "rm -rf /"}, None)
+        assert res.behavior == "deny", tool
+
+
+@pytest.mark.asyncio
+async def test_subagent_bash_still_allowed(vault):
+    # verify/wrap 서브에이전트는 Bash가 필요하다 (테스트 실행, 증거 수집)
+    from types import SimpleNamespace
+    gate = permissions.make_can_use_tool(vault)
+    res = await gate("Bash", {"command": "pytest"},
+                     SimpleNamespace(agent_id="verify-abc"))
+    assert res.behavior == "allow"

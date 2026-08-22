@@ -13,9 +13,20 @@ from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
 
 GATED_TOOLS = ("mcp__wiki__promote_claim", "mcp__wiki__set_claim_status")
 
+# 메인 에이전트가 스키마/게이트를 우회해 vault를 직접 고치는 경로.
+# allowed_tools에서 빼는 것만으로는 부족하다: 사전 승인이 안 된 도구는 이 콜백으로
+# 오는데 기본이 Allow면 그대로 실행된다. 서브에이전트(agent_id 있음)는 verify/wrap의
+# Bash처럼 필요해서 허용하고, 각자의 AgentDefinition.tools로 범위가 잡힌다.
+RAW_MUTATION_TOOLS = ("Bash", "Write", "Edit", "NotebookEdit")
+
 
 def make_can_use_tool(vault: Path):
     async def can_use_tool(tool_name: str, input_data: dict, context):
+        if tool_name in RAW_MUTATION_TOOLS and getattr(context, "agent_id", None) is None:
+            return PermissionResultDeny(
+                message="main agent must go through mcp__wiki__* tools; "
+                        "raw exec/write bypasses schema, IDs, and the verified gate"
+            )
         if tool_name not in GATED_TOOLS:
             return PermissionResultAllow(updated_input=input_data)
         data = {k: v for k, v in input_data.items() if k != "approved_by_human"}
