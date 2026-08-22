@@ -21,3 +21,7 @@ def test_wrap_tool_names_present():
 
 def test_search_tool_name_present():
     assert "mcp__wiki__search_wiki" in tools.WIKI_TOOL_NAMES
+
+
+def test_update_wiki_page_tool_present():
+    assert "mcp__wiki__update_wiki_page" in tools.WIKI_TOOL_NAMES

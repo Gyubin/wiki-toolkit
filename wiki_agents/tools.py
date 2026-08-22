@@ -13,6 +13,7 @@ WIKI_TOOL_NAMES = [
     "mcp__wiki__create_claim", "mcp__wiki__find_similar_claim",
     "mcp__wiki__promote_claim", "mcp__wiki__set_claim_status",
     "mcp__wiki__list_pending", "mcp__wiki__create_wiki_page",
+    "mcp__wiki__update_wiki_page",
     "mcp__wiki__create_learning_item", "mcp__wiki__list_due_reviews",
     "mcp__wiki__record_review",
     "mcp__wiki__collect_git_session",
@@ -26,11 +27,28 @@ def _ok(text: str) -> dict:
     return {"content": [{"type": "text", "text": text}]}
 
 
+def _schema(required: dict, optional: dict | None = None) -> dict:
+    """선택 인자가 있는 도구용 완전한 JSON 스키마.
+
+    dict 축약형({이름: 타입})은 SDK가 모든 키를 required로 만들어 선택 인자를
+    모델에게 광고하지 못한다. evidence_refs, source_refs가 그렇게 묻혀 있었다.
+    """
+    props = dict(required)
+    props.update(optional or {})
+    return {"type": "object", "properties": props, "required": list(required)}
+
+
+_STR = {"type": "string"}
+_INT = {"type": "integer"}
+_STR_LIST = {"type": "array", "items": {"type": "string"}}
+
+
 def build_wiki_server(vault: Path):
     vault = Path(vault)
 
     @tool("create_source", "Capture a raw clip as a source in the Inbox",
-          {"origin": str, "content": str, "sensitivity": str})
+          _schema({"origin": _STR, "content": _STR},
+                  {"sensitivity": _STR, "url": _STR}))
     async def create_source(args):
         p = sources.create_source(
             vault, origin=args["origin"], content=args["content"],
@@ -47,8 +65,10 @@ def build_wiki_server(vault: Path):
         sources.triage_record(vault, args["source_id"], args["decision"], schema.today_str())
         return _ok("recorded")
 
-    @tool("create_claim", "Create an atomic claim (always unverified)",
-          {"claim": str, "claim_type": str})
+    @tool("create_claim", "Create an atomic claim (always unverified). "
+          "Always pass source_refs so the claim stays source-linked.",
+          _schema({"claim": _STR, "claim_type": _STR},
+                  {"source_refs": _STR_LIST, "proposed_status": _STR, "speaker": _STR}))
     async def create_claim(args):
         p = claims.create_claim(
             vault, claim=args["claim"], claim_type=args["claim_type"],
@@ -59,24 +79,27 @@ def build_wiki_server(vault: Path):
         return _ok(f"created {p.stem} (unverified)")
 
     @tool("find_similar_claim", "Find duplicate claims by normalized key",
-          {"claim": str})
+          _schema({"claim": _STR}, {"speaker": _STR}))
     async def find_similar_claim(args):
         hits = claims.find_similar_claim(vault, args["claim"], args.get("speaker"))
         return _ok(", ".join(hits) or "none")
 
-    @tool("promote_claim", "Promote a claim's status (verified is gated)",
-          {"claim_id": str, "target_status": str})
+    @tool("promote_claim", "Promote a claim's status. verified requires evidence_refs; "
+          "human approval exists only in the web Verify tab, never as a tool argument.",
+          _schema({"claim_id": _STR, "target_status": _STR},
+                  {"evidence_refs": _STR_LIST}))
     async def promote_claim(args):
+        # approved_by_human은 의도적으로 전달하지 않는다: 에이전트 경로의 verified는
+        # evidence_refs가 유일한 통로다 (사람 승인은 app.py의 /approve 라우트).
         p = claims.promote_claim(
             vault, args["claim_id"], target_status=args["target_status"],
             evidence_refs=args.get("evidence_refs"),
-            approved_by_human=bool(args.get("approved_by_human", False)),
             date_str=schema.today_str(),
         )
         return _ok(f"promoted {p.stem} -> {args['target_status']}")
 
     @tool("set_claim_status", "Set a non-verified status (disputed/outdated/rejected)",
-          {"claim_id": str, "status": str})
+          _schema({"claim_id": _STR, "status": _STR}, {"superseded_by": _STR}))
     async def set_claim_status(args):
         p = claims.set_claim_status(
             vault, args["claim_id"], status=args["status"],
@@ -89,23 +112,40 @@ def build_wiki_server(vault: Path):
         rows = claims.list_pending(vault)
         return _ok("\n".join(f"{r['id']}: {r['claim'][:60]}" for r in rows) or "none")
 
-    @tool("create_wiki_page", "Create a wiki page (concept/pattern/...)",
-          {"name": str, "page_type": str, "body": str})
+    @tool("create_wiki_page", "Create a wiki page (concept/pattern/...). "
+          "Fails if the page exists; then use update_wiki_page instead.",
+          _schema({"name": _STR, "page_type": _STR, "body": _STR},
+                  {"claim_refs": _STR_LIST, "domain": _STR_LIST}))
     async def create_wiki_page(args):
         p = wiki.create_wiki_page(
             vault, name=args["name"], page_type=args["page_type"], body=args["body"],
             claim_refs=args.get("claim_refs", []), date_str=schema.today_str(),
+            domain=args.get("domain"),
         )
         return _ok(f"created {p.name}")
 
+    @tool("update_wiki_page", "Update an existing wiki page (body, claim_refs, status)",
+          _schema({"path": _STR},
+                  {"body": _STR, "add_claim_refs": _STR_LIST, "status": _STR}))
+    async def update_wiki_page(args):
+        p = (vault / args["path"]).resolve()
+        if not p.is_relative_to(vault.resolve()):
+            raise ValueError("path must stay inside the vault")
+        wiki.update_wiki_page(
+            p, body=args.get("body"),
+            add_claim_refs=args.get("add_claim_refs"), status=args.get("status"),
+        )
+        return _ok(f"updated {p.name}")
+
     @tool("create_learning_item", "Create a learning item / flashcard",
-          {"topic": str, "skill_area": str})
+          _schema({"topic": _STR, "skill_area": _STR},
+                  {"wiki_refs": _STR_LIST, "source_refs": _STR_LIST}))
     async def create_learning_item(args):
         p = learning.create_learning_item(
             vault, topic=args["topic"], skill_area=args["skill_area"],
             date_str=schema.today_str(),
             seq=ids.next_seq(vault, "learning", schema.today_str(), ["30_Learning"]),
-            wiki_refs=args.get("wiki_refs", []),
+            wiki_refs=args.get("wiki_refs", []), source_refs=args.get("source_refs", []),
         )
         return _ok(f"created {p.stem}")
 
@@ -125,7 +165,7 @@ def build_wiki_server(vault: Path):
 
     @tool("collect_git_session",
           "Read a repo's diff/commits/changed files for base..head (read-only)",
-          {"repo": str, "base": str, "head": str})
+          _schema({"repo": _STR, "base": _STR}, {"head": _STR}))
     async def collect_git_session(args):
         s = git.collect_session(args["repo"], args["base"], args.get("head", "HEAD"))
         text = (
@@ -164,7 +204,7 @@ def build_wiki_server(vault: Path):
     _index_cache = search.IndexCache(vault)
 
     @tool("search_wiki", "Hybrid semantic+lexical search over the vault",
-          {"query": str})
+          _schema({"query": _STR}, {"k": _INT}))
     async def search_wiki(args):
         results = _index_cache.get().query(args["query"], int(args.get("k", 8)))
         text = "\n".join(f"- [{r['ref']}] {r['title']} (score {r['score']})"
@@ -175,6 +215,6 @@ def build_wiki_server(vault: Path):
         name="wiki", version="0.1.0",
         tools=[create_source, triage_record, create_claim, find_similar_claim,
                promote_claim, set_claim_status, list_pending, create_wiki_page,
-               create_learning_item, list_due_reviews, record_review,
+               update_wiki_page, create_learning_item, list_due_reviews, record_review,
                collect_git_session, create_session_summary, create_decision, search_wiki],
     )
