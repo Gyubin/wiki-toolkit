@@ -6,7 +6,7 @@ from pathlib import Path
 from claude_agent_sdk import create_sdk_mcp_server, tool
 
 from . import schema
-from .core import claims, git, learning, projects, search, sources, wiki
+from .core import claims, git, ids, learning, projects, search, sources, wiki
 
 WIKI_TOOL_NAMES = [
     "mcp__wiki__create_source", "mcp__wiki__triage_record",
@@ -26,12 +26,6 @@ def _ok(text: str) -> dict:
     return {"content": [{"type": "text", "text": text}]}
 
 
-def _next_seq(vault: Path, subdir: str, prefix: str) -> int:
-    d = Path(vault) / subdir
-    n = len(list(d.glob(f"{prefix}-*.md"))) if d.exists() else 0
-    return n + 1
-
-
 def build_wiki_server(vault: Path):
     vault = Path(vault)
 
@@ -41,7 +35,8 @@ def build_wiki_server(vault: Path):
         p = sources.create_source(
             vault, origin=args["origin"], content=args["content"],
             sensitivity=args.get("sensitivity", "personal"),
-            date_str=schema.today_str(), seq=_next_seq(vault, "00_Inbox/raw", "source"),
+            date_str=schema.today_str(),
+            seq=ids.next_seq(vault, "source", schema.today_str(), ["00_Inbox"]),
             url=args.get("url"),
         )
         return _ok(f"created {p.stem}")
@@ -58,7 +53,7 @@ def build_wiki_server(vault: Path):
         p = claims.create_claim(
             vault, claim=args["claim"], claim_type=args["claim_type"],
             source_refs=args.get("source_refs", []), date_str=schema.today_str(),
-            seq=_next_seq(vault, "10_Claims/pending", "claim"),
+            seq=ids.next_seq(vault, "claim", schema.today_str(), ["10_Claims"]),
             proposed_status=args.get("proposed_status"), speaker=args.get("speaker"),
         )
         return _ok(f"created {p.stem} (unverified)")
@@ -109,7 +104,7 @@ def build_wiki_server(vault: Path):
         p = learning.create_learning_item(
             vault, topic=args["topic"], skill_area=args["skill_area"],
             date_str=schema.today_str(),
-            seq=_next_seq(vault, "30_Learning/flashcards", "learning"),
+            seq=ids.next_seq(vault, "learning", schema.today_str(), ["30_Learning"]),
             wiki_refs=args.get("wiki_refs", []),
         )
         return _ok(f"created {p.stem}")
@@ -148,7 +143,7 @@ def build_wiki_server(vault: Path):
         p = projects.create_session_summary(
             vault, repo=args["repo"], title=args["title"], body=args["body"],
             date_str=schema.today_str(),
-            seq=_next_seq(vault, f"01_Projects/{slug}/sessions", "session"),
+            seq=ids.next_seq(vault, "session", schema.today_str(), [f"01_Projects/{slug}"]),
         )
         return _ok(f"created {p.stem}")
 
@@ -162,7 +157,7 @@ def build_wiki_server(vault: Path):
             vault, repo=args["repo"], title=args["title"], context=args["context"],
             decision=args["decision"], alternatives=args["alternatives"],
             consequences=args["consequences"], date_str=schema.today_str(),
-            seq=_next_seq(vault, f"01_Projects/{slug}/decisions", "decision"),
+            seq=ids.next_seq(vault, "decision", schema.today_str(), [f"01_Projects/{slug}"]),
         )
         return _ok(f"created {p.stem}")
 

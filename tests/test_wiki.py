@@ -27,6 +27,36 @@ def test_create_wiki_page_rejects_unknown_type(vault):
         )
 
 
+def test_korean_page_names_get_distinct_slugs(vault):
+    p1 = wiki.create_wiki_page(
+        vault, name="스레드 병렬성", page_type="concept", body="b",
+        claim_refs=[], date_str="2026-08-22",
+    )
+    p2 = wiki.create_wiki_page(
+        vault, name="형태소 분석", page_type="concept", body="b",
+        claim_refs=[], date_str="2026-08-22",
+    )
+    assert p1 != p2
+    assert p1.stem != "page" and p2.stem != "page"
+
+
+def test_create_wiki_page_refuses_silent_overwrite(vault):
+    wiki.create_wiki_page(
+        vault, name="useEffect timing", page_type="concept", body="원본",
+        claim_refs=[], date_str="2026-08-22",
+    )
+    with pytest.raises(FileExistsError):
+        wiki.create_wiki_page(
+            vault, name="useEffect timing", page_type="concept", body="덮어쓰기",
+            claim_refs=[], date_str="2026-08-22",
+        )
+    path = wiki.create_wiki_page(
+        vault, name="useEffect timing", page_type="concept", body="명시적 갱신",
+        claim_refs=[], date_str="2026-08-22", overwrite=True,
+    )
+    assert "명시적 갱신" in path.read_text(encoding="utf-8")
+
+
 def test_update_wiki_page_adds_claim_refs(vault):
     path = wiki.create_wiki_page(
         vault, name="useEffect timing", page_type="concept",

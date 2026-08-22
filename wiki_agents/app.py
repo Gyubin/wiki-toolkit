@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import schema
-from .core import claims, learning, lint, search, sources
+from .core import claims, ids, learning, lint, search, sources
 
 _WEB = Path(__file__).parent / "web"
 
@@ -20,11 +20,6 @@ class CaptureBody(BaseModel):
     content: str | None = None
     url: str | None = None
     sensitivity: str = "personal"
-
-
-def _next_seq(vault: Path, subdir: str, prefix: str) -> int:
-    d = vault / subdir
-    return (len(list(d.glob(f"{prefix}-*.md"))) if d.exists() else 0) + 1
 
 
 def create_app(vault: Path, embed_fn=None) -> FastAPI:
@@ -40,7 +35,8 @@ def create_app(vault: Path, embed_fn=None) -> FastAPI:
         path = sources.create_source(
             vault, origin=body.origin, content=content or "",
             sensitivity=body.sensitivity, date_str=schema.today_str(),
-            seq=_next_seq(vault, "00_Inbox/raw", "source"), url=body.url,
+            seq=ids.next_seq(vault, "source", schema.today_str(), ["00_Inbox"]),
+            url=body.url,
         )
         return {"id": path.stem}
 

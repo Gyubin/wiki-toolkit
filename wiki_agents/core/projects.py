@@ -10,7 +10,7 @@ from . import index
 
 def project_slug(repo: Path | str) -> str:
     name = Path(repo).name
-    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "project"
+    return re.sub(r"[^a-z0-9가-힣]+", "-", name.lower()).strip("-") or "project"
 
 
 def ensure_project(vault: Path, repo: Path | str) -> Path:
@@ -35,6 +35,8 @@ def create_session_summary(
         "title": title, "sensitivity": sensitivity, "created": date_str,
     }
     path = base / "sessions" / f"{sid}.md"
+    if path.exists():
+        raise FileExistsError(f"{sid} already exists; pick a fresh seq")
     path.write_text(schema.render_doc(meta, body), encoding="utf-8")
     index.append_log(vault, "ingest-log", f"session {sid} ({project_slug(repo)})")
     return path
@@ -57,5 +59,7 @@ def create_decision(
         f"## Alternatives\n\n{alternatives}\n\n## Consequences\n\n{consequences}\n"
     )
     path = base / "decisions" / f"{did}.md"
+    if path.exists():
+        raise FileExistsError(f"{did} already exists; pick a fresh seq")
     path.write_text(schema.render_doc(meta, body), encoding="utf-8")
     return path

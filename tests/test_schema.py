@@ -31,3 +31,28 @@ def test_validate_rejects_unknown():
         schema.validate_claim_type("nonsense")
     with pytest.raises(ValueError):
         schema.validate_status("nonsense")
+
+
+def test_parse_doc_survives_dashes_inside_values():
+    meta = {"type": "claim", "id": "claim-20260822-001",
+            "claim": "옵션 A --- 옵션 B 중 하나를 고른다"}
+    text = schema.render_doc(meta, "## Claim\n\n본문\n")
+    parsed_meta, parsed_body = schema.parse_doc(text)
+    assert parsed_meta == meta
+    assert "본문" in parsed_body
+
+
+def test_parse_doc_keeps_hr_lines_in_body():
+    meta = {"id": "x"}
+    body = "위\n\n---\n\n아래\n"
+    parsed_meta, parsed_body = schema.parse_doc(schema.render_doc(meta, body))
+    assert parsed_meta == meta
+    assert "위" in parsed_body and "아래" in parsed_body
+    assert "\n---\n" in parsed_body
+
+
+def test_parse_doc_without_closing_fence_is_treated_as_body():
+    text = "---\nbroken frontmatter with no close\n"
+    meta, body = schema.parse_doc(text)
+    assert meta == {}
+    assert body == text

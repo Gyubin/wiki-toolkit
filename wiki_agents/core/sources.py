@@ -23,6 +23,8 @@ def create_source(
     body = f"## Raw\n\n{content}\n"
     path = Path(vault) / "00_Inbox" / subdir / f"{sid}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        raise FileExistsError(f"{sid} already exists; pick a fresh seq")
     path.write_text(schema.render_doc(meta, body), encoding="utf-8")
     index.append_log(vault, "ingest-log", f"captured {sid} from {origin} [{sensitivity}]")
     return path

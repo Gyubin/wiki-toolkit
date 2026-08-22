@@ -10,9 +10,24 @@ def test_append_log(vault):
 
 
 def test_update_index_upserts(vault):
-    index.update_index(vault, "claim-index", "claim-20260607-001", "claim A — unverified")
-    index.update_index(vault, "claim-index", "claim-20260607-001", "claim A — verified")
+    index.update_index(vault, "claim-index", "claim-20260607-001", "claim A - unverified")
+    index.update_index(vault, "claim-index", "claim-20260607-001", "claim A - verified")
     text = (vault / "06_Metadata/indexes/claim-index.md").read_text(encoding="utf-8")
     assert text.count("claim-20260607-001") == 1  # upsert, not duplicate
     assert "verified" in text
     assert "unverified" not in text
+
+
+def test_update_index_does_not_delete_lines_mentioning_the_id(vault):
+    index.update_index(vault, "claim-index", "claim-20260607-002",
+                       "claim B supersedes claim-20260607-001")
+    index.update_index(vault, "claim-index", "claim-20260607-001", "claim A - verified")
+    text = (vault / "06_Metadata/indexes/claim-index.md").read_text(encoding="utf-8")
+    assert "claim B supersedes" in text  # 언급만 된 줄은 살아남아야 한다
+    assert "claim A - verified" in text
+
+
+def test_log_lines_contain_no_em_dash(vault):
+    index.append_log(vault, "ingest-log", "captured something")
+    text = (vault / "06_Metadata/logs/ingest-log.md").read_text(encoding="utf-8")
+    assert "—" not in text

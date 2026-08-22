@@ -24,8 +24,9 @@ def _find_file(vault: Path, claim_id: str) -> Path:
 
 
 def normalize_key(text: str, speaker: str | None = None) -> str:
-    toks = re.findall(r"[a-z0-9]+", text.lower())
-    return " ".join(sorted(toks[:8])) + (f"|{speaker.lower()}" if speaker else "")
+    toks = re.findall(r"[a-z0-9]+|[가-힣]+", text.lower())
+    key = " ".join(sorted(toks[:8])) if toks else text.strip().lower()
+    return key + (f"|{speaker.lower()}" if speaker else "")
 
 
 def create_claim(
@@ -44,8 +45,10 @@ def create_claim(
     }
     path = Path(vault) / "10_Claims/pending" / f"{cid}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        raise FileExistsError(f"{cid} already exists; pick a fresh seq")
     path.write_text(schema.render_doc(meta, f"## Claim\n\n{claim}\n"), encoding="utf-8")
-    index.update_index(vault, "claim-index", cid, f"{claim[:60]} — unverified")
+    index.update_index(vault, "claim-index", cid, f"{claim[:60]} - unverified")
     return path
 
 
@@ -83,7 +86,7 @@ def promote_claim(
     dst.write_text(schema.render_doc(meta, body), encoding="utf-8")
     if dst != src:
         src.unlink()
-    index.update_index(vault, "claim-index", claim_id, f"{meta['claim'][:60]} — {target_status}")
+    index.update_index(vault, "claim-index", claim_id, f"{meta['claim'][:60]} - {target_status}")
     return dst
 
 
@@ -91,6 +94,8 @@ def set_claim_status(
     vault: Path, claim_id: str, *, status: str, superseded_by: str | None = None,
     date_str: str,
 ) -> Path:
+    if status == "verified":
+        raise ValueError("verified must go through promote_claim (human approval or evidence)")
     path = promote_claim(
         vault, claim_id, target_status=status, approved_by_human=True, date_str=date_str
     )

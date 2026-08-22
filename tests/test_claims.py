@@ -69,3 +69,36 @@ def test_list_pending(vault):
     _make(vault, seq=1)
     rows = claims.list_pending(vault)
     assert any(r["id"] == "claim-20260607-001" for r in rows)
+
+
+def test_set_claim_status_rejects_verified(vault):
+    _make(vault)
+    with pytest.raises(ValueError):
+        claims.set_claim_status(
+            vault, "claim-20260607-001", status="verified", date_str="2026-06-07",
+        )
+
+
+def test_create_claim_refuses_overwrite(vault):
+    _make(vault, seq=1)
+    with pytest.raises(FileExistsError):
+        _make(vault, seq=1, text="다른 내용의 claim")
+
+
+def test_korean_claims_are_not_all_duplicates(vault):
+    _make(vault, seq=1, text="파이썬 GIL은 스레드 병렬성을 제한한다")
+    _make(vault, seq=2, text="한국어 형태소 분석은 공백 분리로 충분하지 않다")
+    hits = claims.find_similar_claim(vault, "완전히 무관한 세 번째 주장이다")
+    assert hits == []
+
+
+def test_korean_duplicate_still_detected(vault):
+    _make(vault, seq=1, text="파이썬 GIL은 스레드 병렬성을 제한한다")
+    hits = claims.find_similar_claim(vault, "파이썬 GIL은 스레드 병렬성을 제한한다")
+    assert hits == ["claim-20260607-001"]
+
+
+def test_index_lines_contain_no_em_dash(vault):
+    _make(vault, seq=1)
+    text = (vault / "06_Metadata/indexes/claim-index.md").read_text(encoding="utf-8")
+    assert "—" not in text

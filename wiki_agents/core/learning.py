@@ -27,8 +27,10 @@ def create_learning_item(
     }
     path = Path(vault) / "30_Learning/flashcards" / f"{lid}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        raise FileExistsError(f"{lid} already exists; pick a fresh seq")
     path.write_text(schema.render_doc(meta, f"## Topic\n\n{topic}\n"), encoding="utf-8")
-    index.update_index(vault, "learning-index", lid, f"{topic} — unknown")
+    index.update_index(vault, "learning-index", lid, f"{topic} - unknown")
     return path
 
 
@@ -42,8 +44,9 @@ def list_due_reviews(vault: Path, today_str: str) -> list[dict]:
     due = []
     for p in (Path(vault) / "30_Learning").rglob("learning-*.md"):
         meta, _ = schema.parse_doc(p.read_text(encoding="utf-8"))
+        # YAML이 따옴표 없는 날짜를 date 객체로 파싱해도 문자열 비교가 되게 강제
         nr = meta.get("next_review")
-        if nr and nr <= today_str:
+        if nr and str(nr) <= today_str:
             due.append({"id": meta["id"], "topic": meta.get("topic", ""),
                         "level": meta.get("level", "unknown")})
     return sorted(due, key=lambda r: r["id"])
@@ -53,7 +56,8 @@ def record_review(vault: Path, learning_id: str, *, passed: bool, today_str: str
     path = _find(vault, learning_id)
     meta, body = schema.parse_doc(path.read_text(encoding="utf-8"))
     levels = list(schema.LEARNING_LEVELS)
-    cur = levels.index(meta.get("level", "unknown"))
+    lvl = str(meta.get("level", "unknown"))
+    cur = levels.index(lvl) if lvl in levels else 0
     if passed:
         new_idx = min(cur + 1, len(levels) - 1)
         meta["level"] = levels[new_idx]
@@ -62,5 +66,5 @@ def record_review(vault: Path, learning_id: str, *, passed: bool, today_str: str
         meta["next_review"] = _add_days(today_str, 1)
     path.write_text(schema.render_doc(meta, body), encoding="utf-8")
     index.update_index(vault, "learning-index", learning_id,
-                       f"{meta.get('topic','')} — {meta['level']}")
+                       f"{meta.get('topic','')} - {meta['level']}")
     return path

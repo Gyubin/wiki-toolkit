@@ -10,7 +10,7 @@ def append_log(vault: Path, logname: str, line: str) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     ts = _dt.datetime.now().isoformat(timespec="seconds")
     with p.open("a", encoding="utf-8") as f:
-        f.write(f"- {ts} — {line}\n")
+        f.write(f"- {ts} - {line}\n")
 
 
 def update_index(vault: Path, indexname: str, entry_id: str, line: str) -> None:
@@ -19,7 +19,7 @@ def update_index(vault: Path, indexname: str, entry_id: str, line: str) -> None:
     header = p.read_text(encoding="utf-8") if p.exists() else f"# {indexname}\n\n"
     kept = [
         ln for ln in header.splitlines()
-        if not (ln.startswith("- ") and entry_id in ln)
+        if not ln.startswith(f"- [{entry_id}]")
     ]
     kept.append(f"- [{entry_id}] {line}")
     p.write_text("\n".join(kept) + "\n", encoding="utf-8")
