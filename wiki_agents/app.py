@@ -69,13 +69,11 @@ def create_app(vault: Path, embed_fn=None) -> FastAPI:
     def lint_check():
         return lint.run_checks(vault, schema.today_str())
 
-    _search_index: dict = {}
+    _index_cache = search.IndexCache(vault, embed_fn=embed_fn)
 
     @app.get("/search")
     def search_route(q: str = "", k: int = 8, reindex: bool = False):
-        if reindex or "idx" not in _search_index:
-            _search_index["idx"] = search.build_index(vault, embed_fn=embed_fn)
-        return _search_index["idx"].query(q, k)
+        return _index_cache.get(force=reindex).query(q, k)
 
     @app.get("/")
     def home():

@@ -161,14 +161,12 @@ def build_wiki_server(vault: Path):
         )
         return _ok(f"created {p.stem}")
 
-    _search_index: dict = {}
+    _index_cache = search.IndexCache(vault)
 
     @tool("search_wiki", "Hybrid semantic+lexical search over the vault",
           {"query": str})
     async def search_wiki(args):
-        if "idx" not in _search_index:
-            _search_index["idx"] = search.build_index(vault)
-        results = _search_index["idx"].query(args["query"], int(args.get("k", 8)))
+        results = _index_cache.get().query(args["query"], int(args.get("k", 8)))
         text = "\n".join(f"- [{r['ref']}] {r['title']} (score {r['score']})"
                          for r in results) or "no results"
         return _ok(text)

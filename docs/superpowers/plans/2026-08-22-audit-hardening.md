@@ -31,7 +31,9 @@ wf_fa9a2fa3-337 저널). 각 배치는 실패 테스트 -> 구현 -> pytest 녹�
 - [ ] 임베딩 디스크 캐시 (모델명 + 텍스트 해시 키, `$WIKI_EMBED_CACHE` 아래)
 - [ ] vault 지문(md 수 + 최대 mtime) 기반 인덱스 무효화, tools/app 공용
 - [ ] vault 루트 *.md 비재귀 포함 (설계 문서 검색 가능하게)
-- [ ] 임베딩 모델 env `WIKI_EMBED_MODEL`, 기본 multilingual-e5-small (계획서 원안), fastembed `>=0.8,<0.9` 핀
+- [ ] 임베딩 모델 env `WIKI_EMBED_MODEL`. 기본값은 e5-large 유지: fastembed 지원 목록에
+      multilingual e5는 large뿐이라(실측) 원 계획의 e5-small 전환 불가. 비용은 벡터
+      캐시로 흡수. fastembed `>=0.8,<0.9` 핀, mean pooling 정보성 경고 억제(e5는 원래 mean)
 - [ ] CLI search 선행 디렉터리 인자를 vault로 해석
 
 ## Batch 4: 도구/권한/에이전트
