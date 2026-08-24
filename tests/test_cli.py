@@ -57,19 +57,21 @@ def test_search_accepts_leading_vault_dir(monkeypatch, vault):
     assert seen["path"] == vault
 
 
-def test_serve_uses_passed_vault(monkeypatch, vault):
-    """`serve <vault>` must serve the passed path, not cwd."""
-    seen = {}
-    monkeypatch.setattr(cli, "create_app", lambda v: seen.setdefault("app", v))
-    monkeypatch.setattr(cli.uvicorn, "run", lambda *a, **k: None)
-    monkeypatch.setattr(cli.sys, "argv", ["wiki", "serve", str(vault)])
-    cli.main()
-    assert seen["app"] == vault
+def test_bare_invocation_prints_usage_instead_of_hanging(monkeypatch):
+    """인자 없이 `wiki`는 usage + exit 2.
+
+    예전 기본값은 `serve`였다. 웹 앱을 지운 뒤 기본값을 `mcp`로 두면 `wiki`만 쳤을 때
+    stdio 서버가 stdin을 붙들고 조용히 매달린다. 기본값을 두지 않는 이유가 이것이다.
+    """
+    monkeypatch.setattr(cli.sys, "argv", ["wiki"])
+    with pytest.raises(SystemExit) as e:
+        cli.main()
+    assert e.value.code == 2
 
 
-def test_serve_refuses_non_vault_dir(monkeypatch, tmp_path):
-    """scaffold는 init 전용: serve가 아무 디렉토리나 vault 구조로 오염시키면 안 된다."""
-    monkeypatch.setattr(cli.sys, "argv", ["wiki", "serve", str(tmp_path)])
+def test_mcp_refuses_non_vault_dir(monkeypatch, tmp_path):
+    """scaffold는 init 전용: mcp가 아무 디렉토리나 vault 구조로 오염시키면 안 된다."""
+    monkeypatch.setattr(cli.sys, "argv", ["wiki", "mcp", str(tmp_path)])
     with pytest.raises(SystemExit) as e:
         cli.main()
     assert e.value.code == 2

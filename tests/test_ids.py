@@ -12,7 +12,7 @@ def test_next_seq_survives_promotion(vault):
     )
     claims.promote_claim(
         vault, "claim-20260822-001", target_status="verified",
-        approved_by_human=True, date_str="2026-08-22",
+        evidence_refs=["repo:src/x.ts:12"], date_str="2026-08-22",
     )
     # 승격으로 pending이 비어도 시퀀스는 재사용되면 안 된다
     assert ids.next_seq(vault, "claim", "2026-08-22", ["10_Claims"]) == 2

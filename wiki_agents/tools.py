@@ -65,7 +65,7 @@ def build_wiki_tools(vault: Path) -> list:
         """결과 뒤에 "다음에 할 일"을 붙인다.
 
         사람이 파이프라인 단계를 외우지 않아도 되게 하는 장치. 프롬프트가 아니라 도구
-        반환값에 두어 Claude Code, 웹앱, SDK 에이전트 어디로 들어와도 똑같이 나온다.
+        반환값에 두어 Claude Code든 CLI든 어디로 들어와도 똑같이 나온다.
         """
         try:
             hint = pipeline.next_step(vault, schema.today_str())
@@ -117,13 +117,11 @@ def build_wiki_tools(vault: Path) -> list:
         hits = claims.find_similar_claim(vault, args["claim"], args.get("speaker"))
         return _ok(", ".join(hits) or "none")
 
-    @tool("promote_claim", "Promote a claim's status. verified requires evidence_refs; "
-          "human approval exists only in the web Verify tab, never as a tool argument.",
+    @tool("promote_claim", "Promote a claim's status. verified requires evidence_refs. "
+          "사람 판단으로 올릴 때는 그 판단을 evidence_refs에 문장으로 적는다.",
           _schema({"claim_id": _STR, "target_status": _STR},
                   {"evidence_refs": _STR_LIST}))
     async def promote_claim(args):
-        # approved_by_human은 의도적으로 전달하지 않는다: 에이전트 경로의 verified는
-        # evidence_refs가 유일한 통로다 (사람 승인은 app.py의 /approve 라우트).
         p = claims.promote_claim(
             vault, args["claim_id"], target_status=args["target_status"],
             evidence_refs=args.get("evidence_refs"),

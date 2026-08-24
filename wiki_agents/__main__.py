@@ -1,9 +1,12 @@
-"""CLI entry: `uv run wiki init|serve|lint|search|mcp` (default `serve`).
+"""CLI entry: `uv run wiki init|mcp|lint|search`.
 
 The vault lives outside this code repo. Resolution order: explicit positional arg >
 `$WIKI_VAULT` > cwd. Every subcommand goes through `resolve_vault` so none silently
 operates on the wrong directory. Only `init` creates or modifies the vault structure;
 the other subcommands refuse a directory that does not look like a vault.
+
+기본 서브커맨드는 없다. 예전에는 인자가 없으면 `serve`(웹 앱)였는데 웹 앱을 지웠고,
+`mcp`를 기본값으로 두면 `wiki`만 쳤을 때 stdio 서버가 조용히 매달린다. 그냥 usage를 낸다.
 
 환경값은 셸에서 오는 것이 기본이고, 없으면 `$WIKI_ENV_FILE`(기본값: 이 repo 루트의 `.env`)에서
 채운다. MCP 서버는 Claude Code가 띄우기 때문에 셸 rc 파일을 거치지 않을 수 있어서 이 통로가 있다.
@@ -14,10 +17,7 @@ import os
 import sys
 from pathlib import Path
 
-import uvicorn
-
 from . import schema
-from .app import create_app
 from .core import lint as lint_core
 from .core import scaffold
 from .core import search as search_core
@@ -93,17 +93,15 @@ def _run_mcp_stdio(vault: Path) -> None:
 def main() -> None:
     load_env_file()
     args = sys.argv[1:]
-    cmd = args[0] if args else "serve"
+    if not args:
+        print("usage: wiki init|mcp|lint|search [vault] ...")
+        sys.exit(2)
+    cmd = args[0]
 
     if cmd == "init":
         vault = resolve_vault(args[1] if len(args) > 1 else None)
         scaffold.scaffold_vault(vault)
         print(f"scaffolded vault at {vault}")
-        return
-    if cmd == "serve":
-        vault = _require_vault(resolve_vault(args[1] if len(args) > 1 else None))
-        app = create_app(vault)
-        uvicorn.run(app, host="127.0.0.1", port=8765)
         return
     if cmd == "lint":
         vault = _require_vault(resolve_vault(args[1] if len(args) > 1 else None))
@@ -134,7 +132,7 @@ def main() -> None:
         vault = _require_vault(resolve_vault(args[1] if len(args) > 1 else None))
         _run_mcp_stdio(vault)
         return
-    print(f"unknown command: {cmd}; use 'init', 'serve', 'lint', 'search', or 'mcp'")
+    print(f"unknown command: {cmd}; use 'init', 'mcp', 'lint', or 'search'")
     sys.exit(2)
 
 

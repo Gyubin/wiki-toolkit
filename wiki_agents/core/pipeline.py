@@ -3,7 +3,7 @@
 파이프라인은 clip -> source -> claim(unverified) -> verified -> wiki page -> learning item
 순인데, 각 단계가 사람의 다음 행동을 기다린다. 그 대기 지점을 사람이 기억하지 않아도 되게
 도구가 매번 계산해 알려준다. 프롬프트에 적어두는 것과 달리 이건 데이터 경로에 있어서
-Claude Code, 웹앱, SDK 에이전트 어느 쪽으로 들어와도 똑같이 나온다.
+Claude Code든 CLI든 어느 쪽으로 들어와도 똑같이 나온다.
 """
 from __future__ import annotations
 
@@ -76,7 +76,8 @@ def next_step(vault: Path, today_str: str) -> str | None:
     if s["pending_claims"]:
         n = len(s["pending_claims"])
         return (f"다음: pending claim {n}개가 검토를 기다린다 "
-                f"(증거가 있으면 verified로 승격, 없으면 웹 Verify 탭에서 승인)")
+                f"(promote_claim으로 승격: verified는 evidence_refs 필수, "
+                f"확신이 없으면 attributed/opinion/accepted_for_now)")
     if s["verified_unlinked"]:
         n = len(s["verified_unlinked"])
         return (f"다음: 어떤 wiki page에도 안 실린 verified claim {n}개가 있다 "

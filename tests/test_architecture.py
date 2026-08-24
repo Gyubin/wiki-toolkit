@@ -4,7 +4,7 @@ from pathlib import Path
 
 PKG_ROOT = Path(__file__).resolve().parent.parent / "wiki_agents"
 FORBIDDEN_EXTERNAL = {"claude_agent_sdk", "fastapi", "uvicorn", "starlette"}
-ORCH = {"tools", "agent", "app", "subagents", "permissions", "__main__"}
+ORCH = {"tools", "__main__"}
 
 
 def _pkg_of(path: Path) -> str:
@@ -63,20 +63,22 @@ def test_schema_is_base():
     assert not [m for m in refs if m.split(".")[0] == "wiki_agents"], refs
 
 
-def test_only_app_imports_web():
+def test_no_module_imports_a_web_framework():
+    """웹 앱을 지운 뒤로 이 테스트는 약해진 게 아니라 강해졌다.
+
+    예전에는 app.py만 예외로 빼고 나머지를 검사했다. 지금은 예외가 없다.
+    fastapi나 starlette가 다시 들어오면 여기서 걸린다.
+    """
     offenders = {}
     for f in PKG_ROOT.rglob("*.py"):
-        if f.name == "app.py":
-            continue
         refs = referenced_modules(f.read_text(encoding="utf-8"), _pkg_of(f))
-        web = [m for m in refs if m.split(".")[0] in {"fastapi", "starlette"}]
+        web = [m for m in refs if m.split(".")[0] in {"fastapi", "starlette", "uvicorn"}]
         if web:
             offenders[str(f.relative_to(PKG_ROOT))] = web
     assert not offenders, offenders
 
 
-_LAYER = {"__init__": 0, "schema": 0, "core": 1, "tools": 2, "permissions": 2,
-          "subagents": 3, "agent": 4, "app": 5, "__main__": 5}
+_LAYER = {"__init__": 0, "schema": 0, "core": 1, "tools": 2, "__main__": 3}
 
 
 def _layer_of(f: Path) -> str:

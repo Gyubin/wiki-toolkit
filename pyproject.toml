@@ -4,9 +4,12 @@ version = "0.1.0"
 description = "Personal AI wiki + learning agent that writes a separate Markdown vault"
 requires-python = ">=3.11"
 dependencies = [
+    # tools.py가 @tool / create_sdk_mcp_server를 쓴다. 웹 앱을 지워도 이건 남는다.
     "claude-agent-sdk>=0.1.0",
-    "fastapi>=0.110",
-    "uvicorn>=0.29",
+    # __main__.py의 stdio MCP 진입점이 직접 import한다. 예전에는 pyproject에 없어서
+    # claude-agent-sdk가 딸려 오는 데 기대고 있었다.
+    "anyio>=4.0",
+    "mcp>=1.0",
     "pyyaml>=6.0",
     "httpx>=0.27",
     "markdownify>=0.11",

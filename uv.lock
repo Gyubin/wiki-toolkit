@@ -346,22 +346,6 @@ wheels = [
 ]
 
 [[package]]
-name = "fastapi"
-version = "0.136.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "annotated-doc" },
-    { name = "pydantic" },
-    { name = "starlette" },
-    { name = "typing-extensions" },
-    { name = "typing-inspection" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/81/2d/ff8d91d7b564d464629a0fd50a4489c97fcb836ac230bf3a7269232a9b1f/fastapi-0.136.3.tar.gz", hash = "sha256:e487fae93ad408e6f47641ee4dfe389864fd7bec92e547ea8498fc13f43e83ab", size = 396410, upload-time = "2026-05-23T18:53:15.192Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e0/82/45359b62a067409bd929ae8a56b8ed13e5a8c8a61194b3c236920999ab83/fastapi-0.136.3-py3-none-any.whl", hash = "sha256:3d2a69bdf04b7e9f3afa292c3bc7a98816bbfafa10bc9b45f3f3700d2f761620", size = 117481, upload-time = "2026-05-23T18:53:16.924Z" },
-]
-
-[[package]]
 name = "fastembed"
 version = "0.8.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1748,15 +1732,15 @@ name = "wiki-agents"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "anyio" },
     { name = "claude-agent-sdk" },
-    { name = "fastapi" },
     { name = "fastembed" },
     { name = "httpx" },
     { name = "markdownify" },
+    { name = "mcp" },
     { name = "numpy" },
     { name = "pyyaml" },
     { name = "rank-bm25" },
-    { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
@@ -1769,15 +1753,15 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anyio", specifier = ">=4.0" },
     { name = "claude-agent-sdk", specifier = ">=0.1.0" },
-    { name = "fastapi", specifier = ">=0.110" },
     { name = "fastembed", specifier = ">=0.8,<0.9" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "markdownify", specifier = ">=0.11" },
+    { name = "mcp", specifier = ">=1.0" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rank-bm25", specifier = ">=0.2.2" },
-    { name = "uvicorn", specifier = ">=0.29" },
 ]
 
 [package.metadata.requires-dev]

@@ -27,7 +27,7 @@ def test_create_claim_validates_type(vault):
         )
 
 
-def test_promote_to_verified_requires_approval_or_evidence(vault):
+def test_promote_to_verified_requires_evidence(vault):
     _make(vault)
     with pytest.raises(PermissionError):
         claims.promote_claim(
@@ -36,11 +36,11 @@ def test_promote_to_verified_requires_approval_or_evidence(vault):
         )
 
 
-def test_promote_with_human_approval(vault):
+def test_promote_moves_the_file_between_status_folders(vault):
     _make(vault)
     path = claims.promote_claim(
         vault, "claim-20260607-001", target_status="verified",
-        approved_by_human=True, date_str="2026-06-07",
+        evidence_refs=["2026-06-07 본인 확인: 원문과 대조"], date_str="2026-06-07",
     )
     meta, _ = schema.parse_doc(path.read_text(encoding="utf-8"))
     assert meta["status"] == "verified"

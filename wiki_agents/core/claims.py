@@ -66,13 +66,23 @@ def find_similar_claim(vault: Path, claim_text: str, speaker: str | None = None)
 
 def promote_claim(
     vault: Path, claim_id: str, *, target_status: str,
-    evidence_refs: list[str] | None = None, approved_by_human: bool = False,
-    date_str: str,
+    evidence_refs: list[str] | None = None, date_str: str,
 ) -> Path:
+    """verified는 evidence_refs가 유일한 통로다 (원칙 9).
+
+    예전에는 `approved_by_human=True`로도 통과할 수 있었고, 그 플래그를 넘기는 곳은
+    웹 앱의 `/claims/{id}/approve` 하나였다. 웹 앱을 지우면서 같이 뺐다. 그 플래그는
+    파일에 아무것도 안 남겼기 때문에(프론트매터 키 13개 어디에도 안 들어갔다) 결과물은
+    `evidence_refs: []`인 verified였고, lint가 `verified_without_evidence`로 잡았다.
+    즉 "사람이 승인했다"는 기록이 아니라 게이트를 끄는 스위치였다.
+
+    사람 판단으로 승격하고 싶으면 그 판단 자체를 evidence_refs에 적는다.
+    예: evidence_refs=["2026-08-25 본인 확인: 원문 3문단과 대조"]
+    """
     schema.validate_status(target_status)
-    if target_status == "verified" and not approved_by_human and not evidence_refs:
+    if target_status == "verified" and not evidence_refs:
         raise PermissionError(
-            "verified requires human approval or evidence (design principle 9)"
+            "verified requires evidence_refs (design principle 9)"
         )
     src = _find_file(vault, claim_id)
     meta, body = schema.parse_doc(src.read_text(encoding="utf-8"))
@@ -97,10 +107,9 @@ def set_claim_status(
     date_str: str,
 ) -> Path:
     if status == "verified":
-        raise ValueError("verified must go through promote_claim (human approval or evidence)")
-    path = promote_claim(
-        vault, claim_id, target_status=status, approved_by_human=True, date_str=date_str
-    )
+        raise ValueError("verified must go through promote_claim (evidence_refs)")
+    # 여기 오는 status는 verified가 아니므로 promote_claim의 게이트에 안 걸린다.
+    path = promote_claim(vault, claim_id, target_status=status, date_str=date_str)
     if superseded_by:
         meta, body = schema.parse_doc(path.read_text(encoding="utf-8"))
         meta["superseded_by"] = [superseded_by]

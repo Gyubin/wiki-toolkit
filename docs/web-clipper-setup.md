@@ -9,5 +9,6 @@
    - `sensitivity: personal`
    - `url: {{url}}`
    - `captured_at: {{date}}`
-4. Clip a page; it lands in `00_Inbox/browser-clips/`. In the Chat tab, say
-   "Inbox의 새 브라우저 클립 인제스트해줘" to run the ingest subagent over it.
+4. Clip a page; it lands in `00_Inbox/browser-clips/`. Then in Claude Code say
+   "Inbox의 새 브라우저 클립 인제스트해줘". Claude reads `wiki_agents/prompts/ingest.md`
+   and follows it with the `mcp__wiki__*` tools.
