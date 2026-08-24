@@ -23,6 +23,11 @@ def _f(check: str, severity: str, ref: str, message: str) -> dict:
 
 _ID_SHAPED = re.compile(r"^(?:source|claim|session|decision|learning)-\d{8}-\d+$")
 
+# 실패한 캡처는 대개 짧다. 봇월 문구가 있으면 create_source가 아예 막지만, 문구 없이
+# 껍데기만 내려오는 경우가 있어서 여기서 보고한다. 짧은 붙여넣기 메모도 걸리므로
+# 하드 블록이 아니라 warning이다.
+_MIN_SOURCE_CHARS = 200
+
 
 def _parse(p: Path) -> dict | None:
     """meta dict, 또는 파싱 불가/펜스 손상이면 None.
@@ -79,6 +84,20 @@ def run_checks(vault: Path, today_str: str) -> list[dict]:
         if meta and meta.get("type") in schema.WIKI_PAGE_TYPES and not meta.get("claim_refs"):
             findings.append(_f("orphan_wiki", "info", meta.get("name", str(p)),
                                "wiki page has no claim_refs"))
+
+    for p in (vault / "00_Inbox").rglob("*.md"):
+        try:
+            meta, body = schema.parse_doc(p.read_text(encoding="utf-8"))
+        except OSError:
+            continue  # 아래 전체 순회에서 unparseable로 보고된다
+        if meta.get("type") != "source":
+            continue
+        size = len(body.strip())
+        if size < _MIN_SOURCE_CHARS:
+            findings.append(_f("thin_source", "warning",
+                               meta.get("id", str(p.relative_to(vault))),
+                               f"source body is only {size} chars (under {_MIN_SOURCE_CHARS}); "
+                               "a failed capture looks like this"))
 
     all_refs: list[tuple[str, str]] = []  # (참조하는 문서 ref, 참조되는 id)
     for p in vault.rglob("*.md"):

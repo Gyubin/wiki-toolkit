@@ -1,5 +1,5 @@
 from wiki_agents import schema
-from wiki_agents.core import claims, index, lint, wiki
+from wiki_agents.core import claims, index, lint, sources, wiki
 
 
 def _seed(vault):
@@ -127,3 +127,18 @@ def test_inbox_clip_with_foreign_frontmatter_is_still_flagged(vault):
         encoding="utf-8")
     findings = lint.run_checks(vault, "2026-06-07")
     assert any(f["check"] == "inbox_unstructured" for f in findings)
+
+
+def test_thin_source_is_reported(vault):
+    """봇월 문구 없이 껍데기만 내려온 캡처는 create_source가 못 막으므로 lint가 본다."""
+    sources.create_source(vault, origin="browser", content="빈 껍데기",
+                          date_str="2026-06-07", seq=1, url="https://example.com")
+    checks = {f["check"] for f in lint.run_checks(vault, "2026-06-07")}
+    assert "thin_source" in checks
+
+
+def test_normal_length_source_is_not_reported(vault):
+    sources.create_source(vault, origin="browser", content="가" * 300,
+                          date_str="2026-06-07", seq=2, url="https://example.com")
+    thin = [f for f in lint.run_checks(vault, "2026-06-07") if f["check"] == "thin_source"]
+    assert thin == []
