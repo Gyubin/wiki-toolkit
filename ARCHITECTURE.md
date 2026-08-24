@@ -15,7 +15,8 @@ vault path via `resolve_vault` (`__main__.py`): explicit arg > `$WIKI_VAULT` > c
 L0  schema.py          enums, IDs, frontmatter render/parse - SINGLE SOURCE OF TRUTH
 L1  core/*             pure, deterministic vault logic (no LLM, no web)
       sources  claims  wiki  learning  index  ids  scaffold  git  projects  lint  search
-L2  tools.py           wraps core/* as in-process MCP @tools (mcp__wiki__*, 16 tools);
+      pipeline (다음 단계 계산)
+L2  tools.py           wraps core/* as in-process MCP @tools (mcp__wiki__*, 17 tools);
                        write tools auto-commit the vault (audit trail)
     permissions.py     can_use_tool gate. GATED_TOOLS(promote/set_claim_status)는
                        allowed_tools에서 빠져 있어야 콜백이 불린다 (사전 승인 시 미호출)
@@ -43,15 +44,24 @@ violation fails the test, not a code review.
 - `core/git.py` — read-only git session collection for wrap-feature + commit_vault (감사 추적용 자동 커밋).
 - `core/projects.py` — `01_Projects/<repo>/` session summaries and ADRs.
 - `core/lint.py` — deterministic, report-only vault hygiene checks.
-- `core/search.py` — hybrid BM25(한글 2-gram) + local-embedding(fastembed, e5 접두사) search, RRF fusion;
+- `core/pipeline.py` — `vault_state`/`next_step`: 파이프라인에서 사람을 기다리는 지점 하나를 계산.
+  ingest 대기 > pending claim > wiki page 미승격 verified > 복습 도래 순으로 하나만 돌려준다.
+- `core/search.py` — hybrid BM25(한글 2-gram) + embedding search, RRF fusion. 임베딩은 기본이 OpenAI
+  Embeddings API(`text-embedding-3-large`)이고, `WIKI_EMBED_PROVIDER=local`이면 fastembed로 로컬 실행(e5 접두사);
   injectable embedder; 벡터 디스크 캐시 + vault 지문 기반 인덱스 무효화.
-  env: `WIKI_EMBED_MODEL`(기본 multilingual-e5-large), `WIKI_EMBED_CACHE`, 모델은 `WIKI_MODEL`.
-- `tools.py` — `@tool` wrappers + `build_wiki_server`; `WIKI_TOOL_NAMES`.
+  env: `WIKI_EMBED_PROVIDER`(openai|local, 기본 openai), `OPENAI_API_KEY`, `WIKI_EMBED_MODEL`,
+  `WIKI_EMBED_DIM`, `WIKI_OPENAI_BASE_URL`, `WIKI_EMBED_SEND_SENSITIVE`, `WIKI_EMBED_CACHE`;
+  에이전트 모델은 `WIKI_MODEL`.
+- `tools.py` — `@tool` wrappers + `build_wiki_tools`(도구 목록) / `build_wiki_server`(MCP 래핑);
+  `WIKI_TOOL_NAMES`. 쓰기 도구와 `list_pending`의 반환에 `pipeline.next_step`을 덧붙여
+  사람이 다음 단계를 외우지 않아도 되게 한다 (프롬프트가 아니라 데이터 경로).
 - `permissions.py` — `make_can_use_tool` (denies unapproved `verified` promotion).
 - `subagents.py` — `build_subagents()`; per-agent prompt (`prompts/*.md`) + tool allowlist.
 - `agent.py` — `build_options(vault)` + `WikiSession` (async, multi-turn).
 - `app.py` — `create_app(vault, embed_fn=None)`: capture/queues/chat/wrap/lint/search routes.
 - `__main__.py` — process entry; scaffolds the vault then serves or runs a CLI subcommand.
+  `load_env_file()`이 `$WIKI_ENV_FILE`(기본 repo 루트 `.env`)을 읽어 셸에 없는 값만 채운다
+  (MCP 서버는 셸 rc를 안 거칠 수 있다). `.env`는 gitignore, 형식은 `.env.example` 참조.
 
 ## What is NOT here (constraints by absence)
 
@@ -59,7 +69,10 @@ violation fails the test, not a code review.
 - **`schema.py` imports nothing from `wiki_agents`.** It is the base. (Enforced.)
 - **Only `app.py` imports the web framework.** (Enforced.)
 - **No second "work vault."** Work/confidential content lives in the same vault under `01_Projects/<repo>/`, distinguished by a `sensitivity` frontmatter tag — not refused.
-- **No external embedding API.** Embeddings are local (fastembed); vault content never leaves the machine.
+- **임베딩은 기본적으로 외부 API를 탄다 (2026-08-25 변경).** 이전에는 로컬 전용이었다. 지금은 문서 본문이
+  OpenAI Embeddings API(`text-embedding-3-large`)로 나간다. `sensitivity: work`도 보낸다(사용자 결정).
+  `confidential`만 보내지 않고 BM25(로컬)로만 검색된다(`WIKI_EMBED_SEND_SENSITIVE=1`로 해제).
+  전부 로컬로 돌리려면 `WIKI_EMBED_PROVIDER=local`. BM25와 나머지 파이프라인은 네트워크를 타지 않는다.
 - **No persistent conversation memory across restarts.** Durable state = vault Markdown files +
   git history (쓰기마다 자동 커밋). 웹 앱은 프로세스 수명 동안 세션 하나를 유지하고
   `/chat/reset`으로 비운다; 재시작하면 대화는 사라진다.

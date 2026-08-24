@@ -7,7 +7,7 @@ from pathlib import Path
 from claude_agent_sdk import create_sdk_mcp_server, tool
 
 from . import schema
-from .core import claims, git, ids, learning, projects, search, sources, wiki
+from .core import claims, git, ids, learning, pipeline, projects, search, sources, wiki
 
 WIKI_TOOL_NAMES = [
     "mcp__wiki__create_source", "mcp__wiki__triage_record",
@@ -21,6 +21,7 @@ WIKI_TOOL_NAMES = [
     "mcp__wiki__create_session_summary",
     "mcp__wiki__create_decision",
     "mcp__wiki__search_wiki",
+    "mcp__wiki__vault_next_step",
 ]
 
 
@@ -56,14 +57,27 @@ def resolve_wiki_page_path(vault: Path, rel: str) -> Path:
     return p
 
 
-def build_wiki_server(vault: Path):
+def build_wiki_tools(vault: Path) -> list:
+    """vault에 묶인 @tool 객체 목록. 테스트가 핸들러를 직접 부를 수 있게 분리했다."""
     vault = Path(vault)
+
+    def _with_next_step(text: str) -> str:
+        """결과 뒤에 "다음에 할 일"을 붙인다.
+
+        사람이 파이프라인 단계를 외우지 않아도 되게 하는 장치. 프롬프트가 아니라 도구
+        반환값에 두어 Claude Code, 웹앱, SDK 에이전트 어디로 들어와도 똑같이 나온다.
+        """
+        try:
+            hint = pipeline.next_step(vault, schema.today_str())
+        except OSError:  # vault 상태 계산 실패가 쓰기 성공을 가리면 안 된다
+            return text
+        return f"{text}\n{hint}" if hint else text
 
     def _done(text: str, paths: list[str]) -> dict:
         # 쓰기 도구 공통: 감사 추적용 vault 자동 커밋 (git repo 아니면 무동작).
         # paths로 스테이징을 한정해 사용자의 무관한 수동 편집을 쓸어 담지 않는다.
         git.commit_vault(vault, f"wiki: {text}", paths=[*paths, "06_Metadata"])
-        return _ok(text)
+        return _ok(_with_next_step(text))
 
     @tool("create_source", "Capture a raw clip as a source in the Inbox",
           _schema({"origin": _STR, "content": _STR},
@@ -129,7 +143,8 @@ def build_wiki_server(vault: Path):
     @tool("list_pending", "List pending (unverified) claims", {})
     async def list_pending(args):
         rows = claims.list_pending(vault)
-        return _ok("\n".join(f"{r['id']}: {r['claim'][:60]}" for r in rows) or "none")
+        return _ok(_with_next_step(
+            "\n".join(f"{r['id']}: {r['claim'][:60]}" for r in rows) or "none"))
 
     @tool("create_wiki_page", "Create a wiki page (concept/pattern/...). "
           "Fails if the page exists; then use update_wiki_page instead.",
@@ -220,6 +235,21 @@ def build_wiki_server(vault: Path):
 
     _index_cache = search.IndexCache(vault)
 
+    @tool("vault_next_step",
+          "파이프라인에서 지금 사람이 해야 할 다음 한 가지와 각 단계의 대기 개수", {})
+    async def vault_next_step(args):
+        s = pipeline.vault_state(vault, schema.today_str())
+        hint = pipeline.next_step(vault, schema.today_str()) or "대기 중인 단계 없음"
+        return _ok("\n".join([
+            hint, "",
+            f"ingest 대기 클립: {len(s['unstructured_inbox'])}",
+            f"pending claim: {len(s['pending_claims'])}",
+            f"verified claim: {len(s['verified_claims'])} "
+            f"(그중 wiki page에 안 실림: {len(s['verified_unlinked'])})",
+            f"wiki page: {len(s['wiki_pages'])}",
+            f"학습카드: {len(s['learning_items'])} (오늘 복습 도래: {len(s['due_reviews'])})",
+        ]))
+
     @tool("search_wiki", "Hybrid semantic+lexical search over the vault",
           _schema({"query": _STR}, {"k": _INT}))
     async def search_wiki(args):
@@ -229,10 +259,14 @@ def build_wiki_server(vault: Path):
                          for r in results) or "no results"
         return _ok(text)
 
+    return [create_source, triage_record, create_claim, find_similar_claim,
+            promote_claim, set_claim_status, list_pending, create_wiki_page,
+            update_wiki_page, create_learning_item, list_due_reviews, record_review,
+            collect_git_session, create_session_summary, create_decision, search_wiki,
+            vault_next_step]
+
+
+def build_wiki_server(vault: Path):
     return create_sdk_mcp_server(
-        name="wiki", version="0.1.0",
-        tools=[create_source, triage_record, create_claim, find_similar_claim,
-               promote_claim, set_claim_status, list_pending, create_wiki_page,
-               update_wiki_page, create_learning_item, list_due_reviews, record_review,
-               collect_git_session, create_session_summary, create_decision, search_wiki],
+        name="wiki", version="0.1.0", tools=build_wiki_tools(vault),
     )

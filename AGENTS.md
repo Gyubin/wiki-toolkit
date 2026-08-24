@@ -6,8 +6,12 @@ for the code map and `docs/superpowers/` for the design history (ExecPlans).
 ## 1. Environment
 - Use **`uv`**: `uv run pytest`, `uv run ruff check`, `uv run wiki init|serve|lint|search|mcp`. Don't invoke `python`/`pip` directly.
 - Only `init` scaffolds. serve/lint/search/mcp **refuse** a directory without `06_Metadata/` (exit 2). lint exits 1 when error-severity findings exist.
-- `wiki mcp <vault>` exposes the same 16 tools over stdio for Claude Code: `claude mcp add wiki -- uv run --directory <this repo> wiki mcp <vault>`.
+- `wiki mcp <vault>` exposes the same 17 tools over stdio for Claude Code: `claude mcp add wiki -- uv run --directory <this repo> wiki mcp <vault>`.
 - **The vault lives outside this repo.** Every `wiki` subcommand resolves the vault as: explicit path arg > `$WIKI_VAULT` > cwd (`resolve_vault` in `__main__.py`). Point it at your vault, e.g. `uv run wiki serve "$WIKI_VAULT"`. This repo holds **code only**.
+- **검색 임베딩은 기본이 OpenAI API다.** `search`와 `search_wiki`는 `OPENAI_API_KEY`가 필요하다(없으면
+  CLI는 안내 + exit 2, 웹은 503). 오프라인이나 전량 로컬이 필요하면 `WIKI_EMBED_PROVIDER=local`
+  (fastembed, 첫 실행에 가중치 2.1GB 다운로드). `sensitivity: confidential` 문서 본문만 원격 임베딩에서
+  제외된다(BM25로는 검색됨). 키와 설정은 셸 export 또는 repo 루트 `.env`(gitignore, `.env.example` 참조).
 - The agent runtime (`WikiSession`, `/chat`, `/wrap`, `/lint/contradictions`) needs the **Claude Code CLI** installed; pure `core/` logic and the web routes that only touch `core/` do not.
 
 ## 2. Integrity — go through `core/`, never hand-write structured files

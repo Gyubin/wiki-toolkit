@@ -36,3 +36,55 @@ def test_update_wiki_page_is_confined_to_resources(vault):
         tools.resolve_wiki_page_path(vault, "10_Claims/pending/claim-20260101-001.md")
     with pytest.raises(ValueError):
         tools.resolve_wiki_page_path(vault, "03_Resources/../10_Claims/x.md")
+
+
+def test_vault_next_step_tool_present():
+    assert "mcp__wiki__vault_next_step" in tools.WIKI_TOOL_NAMES
+
+
+def _handlers(vault):
+    return {t.name: t.handler for t in tools.build_wiki_tools(vault)}
+
+
+def test_write_tools_append_the_next_step(vault):
+    """쓰기 결과에 다음 단계가 붙어야 한다 (프롬프트가 아니라 데이터 경로에 있는 안내)."""
+    import asyncio
+
+    h = _handlers(vault)
+    out = asyncio.run(h["create_claim"]({
+        "claim": "주장", "claim_type": "technical_fact", "source_refs": ["s"]}))
+    text = out["content"][0]["text"]
+    assert "created" in text
+    assert "pending claim 1개" in text
+
+
+def test_list_pending_appends_the_next_step(vault):
+    import asyncio
+
+    h = _handlers(vault)
+    asyncio.run(h["create_claim"]({
+        "claim": "주장", "claim_type": "technical_fact", "source_refs": ["s"]}))
+    text = asyncio.run(h["list_pending"]({}))["content"][0]["text"]
+    assert "pending claim 1개" in text
+
+
+def test_next_step_advances_after_verification(vault):
+    """승인하고 나면 안내가 wiki page 단계로 넘어가야 한다."""
+    import asyncio
+
+    h = _handlers(vault)
+    created = asyncio.run(h["create_claim"]({
+        "claim": "주장", "claim_type": "technical_fact", "source_refs": ["s"]}))
+    cid = created["content"][0]["text"].split()[1]
+    out = asyncio.run(h["promote_claim"]({
+        "claim_id": cid, "target_status": "verified", "evidence_refs": ["core/search.py:20"]}))
+    assert "wiki page" in out["content"][0]["text"]
+
+
+def test_vault_next_step_tool_reports_counts(vault):
+    import asyncio
+
+    h = _handlers(vault)
+    text = asyncio.run(h["vault_next_step"]({}))["content"][0]["text"]
+    assert "대기 중인 단계 없음" in text
+    assert "pending claim: 0" in text
