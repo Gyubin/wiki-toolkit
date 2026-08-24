@@ -108,15 +108,16 @@ accepted_for_now 3, verified 0). 웹이 독점하던 "증거 없이 verified" �
 승인"이라고 안내했고, `AGENTS.md`는 "main agent has no Bash/Write/Edit"라고 적고 있었는데 실제로
 쓰는 경로에서는 둘 다 거짓이었다.
 
-**같이 사라진 판단들 (여기 옮겨 적는다).** `subagents.py`의 도구 허용 목록에만 있던 것들이고
-프롬프트 파일에는 안 적혀 있었다. 다시 에이전트를 짤 일이 생기면 이 세 줄부터 본다.
+**같이 사라진 판단들 (여기 옮겨 적는다).** `subagents.py`의 도구 허용 목록에 있던 것들이다.
+다시 에이전트를 짤 일이 생기면 이 세 줄부터 본다. 프롬프트에 얼마나 적혀 있었는지도 같이 적는다.
 
 - **verify에는 Bash를 주지 않는다.** verify는 신뢰 불가 클립에서 나온 claim 텍스트를 다룬다.
   프롬프트 주입이 성공했을 때 실행 능력이 없어야 한다. 테스트 실행은 wrap의 몫이었다.
-- **lint는 `Write`/`Edit`/`Bash`를 전부 막는다.** 읽기 전용 감사다. 모순을 찾아 보고만 하고
-  해소는 사람이 한다.
-- **answer는 `Write`/`Edit`를 막는다.** 답변에서 나온 통찰은 `create_claim`으로 unverified로만
-  들어간다. wiki page에 직접 쓰지 않는다.
+  → `verify.md`에 이 얘기가 **전혀 없다.** 오직 `subagents.py`의 주석에만 있었다.
+- **lint는 `Write`/`Edit`/`Bash`를 전부 막는다.** 읽기 전용 감사다.
+  → `lint.md`는 "claim을 고치거나 승격하지 말라"까지만 적고 있다. 도구 차단은 안 적혀 있었다.
+- **answer는 `Write`를 막는다.** 답변에서 나온 통찰은 `create_claim`으로 unverified로만 들어간다.
+  → 이건 `answer.md` 마지막 줄에 "You may not use Write"로 적혀 있다. `Edit` 차단만 코드에 있었다.
 
 **같이 뺀 것.** `promote_claim`의 `approved_by_human`. 그 플래그를 넘기는 곳은 웹의 `/approve`
 하나였고, 파일에 아무 흔적도 안 남겼다(프론트매터 키 13개 어디에도 없었다). 결과물은
