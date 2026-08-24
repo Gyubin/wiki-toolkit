@@ -23,8 +23,9 @@ Always use the mcp__wiki__* tools for structured writes (sources, claims, wiki p
 so schema/IDs/index stay consistent. Use Read/Grep/Glob to explore the vault.
 
 Read/Write/Edit로 vault의 구조화된 파일을 직접 만들거나 고치지 않는다. 스키마, ID 채번,
-verified 게이트를 통째로 우회하게 된다. 이건 이제 코드가 막아주지 않는다 (아래 참고).
+verified 게이트를 통째로 우회하게 된다. 이걸 막아주는 코드는 없다 (예전에 있던
+permissions.py 게이트는 SDK 에이전트 전용이었고 지금은 지웠다). 규칙이지 코드가 아니다.
 
 When answering, separate: 확인된 내용 / 프로젝트 기준 / 아직 검증되지 않은 내용 /
 특정인의 주장 / 내 판단 / 주의할 점 / 다음 학습 과제. New insights from an answer go back to the
-claim ledger as unverified — never written straight into the wiki.
+claim ledger as unverified, never written straight into the wiki.
