@@ -29,21 +29,33 @@ _ID_SHAPED = re.compile(r"^(?:source|claim|session|decision|learning)-\d{8}-\d+$
 _MIN_SOURCE_CHARS = 200
 
 
-def _parse(p: Path) -> dict | None:
-    """meta dict, 또는 파싱 불가/펜스 손상이면 None.
+def _parse_full(p: Path) -> tuple[dict, str] | None:
+    """(meta, body), 또는 파싱 불가/펜스 손상이면 None.
 
     parse_doc은 닫는 펜스가 없는 파일을 조용히 ({}, 원문)으로 돌려주므로,
     '---'로 시작하는데 meta가 비면 손상으로 취급해야 한다. 안 그러면 lint는
     침묵하는데 list_pending 같은 소비자는 그 파일에서 죽는 모순이 생긴다.
+
+    **파싱 경로는 여기 하나뿐이어야 한다.** run_checks 안에서 schema.parse_doc을 직접
+    부르면 이 방어를 우회한다. 실제로 그렇게 했다가 깨졌다: thin_source 검사가
+    parse_doc을 직접 부르면서 OSError만 잡았는데, 제목에 콜론이 든 Web Clipper 클립
+    하나가 yaml.ScannerError로 lint 전체를 죽였다. 그것도 unparseable을 보고하는
+    아래 순회보다 먼저 돌아서, 보고 대신 트레이스백이 나갔다.
     """
     try:
         text = p.read_text(encoding="utf-8")
-        meta, _ = schema.parse_doc(text)
+        meta, body = schema.parse_doc(text)
     except Exception:
         return None
     if not meta and text.startswith("---"):
         return None
-    return meta
+    return meta, body
+
+
+def _parse(p: Path) -> dict | None:
+    """meta만 필요할 때. 파싱 불가면 None."""
+    parsed = _parse_full(p)
+    return None if parsed is None else parsed[0]
 
 
 def run_checks(vault: Path, today_str: str) -> list[dict]:
@@ -86,10 +98,10 @@ def run_checks(vault: Path, today_str: str) -> list[dict]:
                                "wiki page has no claim_refs"))
 
     for p in (vault / "00_Inbox").rglob("*.md"):
-        try:
-            meta, body = schema.parse_doc(p.read_text(encoding="utf-8"))
-        except OSError:
+        parsed = _parse_full(p)
+        if parsed is None:
             continue  # 아래 전체 순회에서 unparseable로 보고된다
+        meta, body = parsed
         if meta.get("type") != "source":
             continue
         size = len(body.strip())

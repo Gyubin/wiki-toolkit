@@ -142,3 +142,23 @@ def test_normal_length_source_is_not_reported(vault):
                           date_str="2026-06-07", seq=2, url="https://example.com")
     thin = [f for f in lint.run_checks(vault, "2026-06-07") if f["check"] == "thin_source"]
     assert thin == []
+
+
+def test_malformed_inbox_clip_is_reported_not_crashed(vault):
+    """제목에 콜론이 든 Web Clipper 클립 하나가 lint 전체를 죽이면 안 된다.
+
+    thin_source 검사를 넣으면서 schema.parse_doc을 직접 부르고 OSError만 잡았더니
+    yaml.ScannerError가 그대로 올라와 lint가 죽었다. 그것도 unparseable을 보고하는
+    순회보다 먼저 돌아서 보고 대신 트레이스백이 나갔다. 파싱 경로는 _parse_full 하나다.
+    """
+    (vault / "00_Inbox/clip.md").write_text(
+        "---\ntitle: Rust 1.0: what changed\nsource: https://x.com\n---\n\nclipped body\n",
+        encoding="utf-8")
+    checks = {f["check"] for f in lint.run_checks(vault, "2026-06-07")}
+    assert "unparseable" in checks
+
+
+def test_binary_inbox_file_does_not_crash_lint(vault):
+    (vault / "00_Inbox/blob.md").write_bytes(b"\xff\xfe\x00\x00binary junk")
+    checks = {f["check"] for f in lint.run_checks(vault, "2026-06-07")}
+    assert "unparseable" in checks

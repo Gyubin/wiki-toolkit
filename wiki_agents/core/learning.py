@@ -43,7 +43,12 @@ def _find(vault: Path, learning_id: str) -> Path:
 def list_due_reviews(vault: Path, today_str: str) -> list[dict]:
     due = []
     for p in (Path(vault) / "30_Learning").rglob("learning-*.md"):
-        meta, _ = schema.parse_doc(p.read_text(encoding="utf-8"))
+        try:
+            meta, _ = schema.parse_doc(p.read_text(encoding="utf-8"))
+        except Exception:  # noqa: S112 - 깨진 파일 하나가 목록 전체를 죽이면 안 된다 (lint가 보고한다)
+            continue
+        if not meta.get("id"):
+            continue
         # YAML이 따옴표 없는 날짜를 date 객체로 파싱해도 문자열 비교가 되게 강제
         nr = meta.get("next_review")
         if nr and str(nr) <= today_str:

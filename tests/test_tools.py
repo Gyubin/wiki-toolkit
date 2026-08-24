@@ -88,3 +88,18 @@ def test_vault_next_step_tool_reports_counts(vault):
     text = asyncio.run(h["vault_next_step"]({}))["content"][0]["text"]
     assert "대기 중인 단계 없음" in text
     assert "pending claim: 0" in text
+
+
+async def test_write_tool_survives_a_broken_file_elsewhere_in_the_vault(vault):
+    """쓰기가 성공했으면 도구는 성공을 보고해야 한다.
+
+    쓰기 뒤에 붙는 "다음: ..." 힌트는 vault 전체를 훑는다. 그 계산이 터지면 파일은
+    이미 만들어졌는데 도구는 실패로 보이고, 모델은 다시 써서 중복 claim을 만든다.
+    힌트는 부가 정보이므로 무슨 이유로든 못 만들면 조용히 생략한다.
+    """
+    (vault / "30_Learning/flashcards/learning-20260825-001.md").write_text(
+        "---\nfoo: [unclosed\n---\nbody\n", encoding="utf-8")
+    h = {t.name: t for t in tools.build_wiki_tools(vault)}
+    res = await h["create_claim"].handler({"claim": "테스트 주장", "claim_type": "opinion"})
+    assert "created" in res["content"][0]["text"]
+    assert list((vault / "10_Claims/pending").glob("claim-*.md"))

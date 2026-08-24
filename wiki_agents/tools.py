@@ -69,7 +69,11 @@ def build_wiki_tools(vault: Path) -> list:
         """
         try:
             hint = pipeline.next_step(vault, schema.today_str())
-        except OSError:  # vault 상태 계산 실패가 쓰기 성공을 가리면 안 된다
+        except Exception:  # noqa: BLE001
+            # vault 상태 계산 실패가 쓰기 성공을 가리면 안 된다. OSError만 잡았더니
+            # 깨진 학습카드 하나가 yaml 예외를 올려서, 파일은 이미 만들어졌는데 도구는
+            # 실패로 보였다. 모델은 실패로 알고 다시 써서 중복 claim을 만든다.
+            # 힌트는 부가 정보다. 무슨 이유로든 못 만들면 조용히 생략한다.
             return text
         return f"{text}\n{hint}" if hint else text
 
