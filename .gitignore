@@ -3,6 +3,11 @@ __pycache__/
 .venv/
 .pytest_cache/
 *.egg-info/
+
+# API 키 등 로컬 환경값 (절대 커밋 금지)
+.env
+.env.*
+!.env.example
 .obsidian/workspace*.json
 .obsidian/cache
 

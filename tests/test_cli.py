@@ -1,5 +1,6 @@
 """CLI vault-path resolution: every subcommand must honor the passed vault / $WIKI_VAULT,
 never hardcode cwd. Guards the code/vault separation (harness engineering)."""
+import os
 from pathlib import Path
 
 import pytest
@@ -106,3 +107,51 @@ def test_mcp_subcommand_dispatches(monkeypatch, vault):
     monkeypatch.setattr(cli.sys, "argv", ["wiki", "mcp", str(vault)])
     cli.main()
     assert seen["vault"] == vault
+
+
+def test_search_reports_embedder_config_error(vault, monkeypatch, capsys):
+    """임베딩 provider 설정 문제는 트레이스백이 아니라 안내 + exit 2로 나와야 한다."""
+    def boom(path):
+        raise RuntimeError("OPENAI_API_KEY가 없다")
+
+    monkeypatch.setattr(cli.search_core, "build_index", boom)
+    monkeypatch.setattr(cli.sys, "argv", ["wiki", "search", str(vault), "질의"])
+    with pytest.raises(SystemExit) as e:
+        cli.main()
+    assert e.value.code == 2
+    assert "OPENAI_API_KEY" in capsys.readouterr().out
+
+
+def test_load_env_file_fills_only_missing_keys(tmp_path, monkeypatch):
+    """.env는 셸에 없는 값만 채운다. 셸이 항상 이긴다."""
+    monkeypatch.setattr(cli.os, "environ", dict(os.environ))  # 실제 환경 오염 방지
+    env = tmp_path / ".env"
+    env.write_text(
+        "# 주석\n\n"
+        'export OPENAI_API_KEY="sk-from-file"\n'
+        "WIKI_EMBED_MODEL='text-embedding-3-small'\n"
+        "WIKI_EMBED_DIM=1024\n"
+        "BROKEN_LINE_WITHOUT_EQUALS\n",
+        encoding="utf-8")
+    monkeypatch.setenv("WIKI_ENV_FILE", str(env))
+    monkeypatch.setenv("WIKI_EMBED_DIM", "256")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("WIKI_EMBED_MODEL", raising=False)
+
+    filled = cli.load_env_file()
+    assert cli.os.environ["OPENAI_API_KEY"] == "sk-from-file"      # 따옴표 제거 + export 허용
+    assert cli.os.environ["WIKI_EMBED_MODEL"] == "text-embedding-3-small"
+    assert cli.os.environ["WIKI_EMBED_DIM"] == "256"               # 셸 값을 덮지 않는다
+    assert set(filled) == {"OPENAI_API_KEY", "WIKI_EMBED_MODEL"}
+
+
+def test_load_env_file_absent_is_noop(tmp_path, monkeypatch):
+    monkeypatch.setenv("WIKI_ENV_FILE", str(tmp_path / "no-such.env"))
+    assert cli.load_env_file() == []
+
+
+def test_env_file_path_defaults_to_repo_root(monkeypatch):
+    monkeypatch.delenv("WIKI_ENV_FILE", raising=False)
+    p = cli.env_file_path()
+    assert p.name == ".env"
+    assert (p.parent / "pyproject.toml").exists()  # repo 루트

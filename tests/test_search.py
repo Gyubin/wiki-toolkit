@@ -1,3 +1,8 @@
+import json
+
+import httpx
+import pytest
+
 from wiki_agents.core import claims, search
 
 _VOCAB = ["python", "typed", "react", "hook", "effect", "git", "commit", "search", "vector"]
@@ -206,3 +211,228 @@ def test_vec_cache_avoids_reembedding(vault, tmp_path):
     search.build_index(vault, embed_fn=counting_embed,
                        vec_cache=search.VecCache(cache_path))
     assert sum(calls) == 0  # 문서가 그대로면 디스크 캐시로 임베딩 호출 0회
+
+
+# ---------------------------------------------------------------- OpenAI provider
+
+def _mock_client(handler):
+    return httpx.Client(transport=httpx.MockTransport(handler),
+                        base_url="https://api.openai.com/v1", timeout=5.0)
+
+
+def test_provider_defaults_to_openai(monkeypatch):
+    monkeypatch.delenv("WIKI_EMBED_PROVIDER", raising=False)
+    monkeypatch.delenv("WIKI_EMBED_MODEL", raising=False)
+    assert search.embed_provider() == "openai"
+    assert search.embed_model_name() == "text-embedding-3-large"
+    assert search.embed_prefixes() == ("", "")
+    assert search.remote_blocked_sensitivities() == ("confidential",)
+
+    monkeypatch.setenv("WIKI_EMBED_PROVIDER", "local")
+    assert search.embed_model_name() == "intfloat/multilingual-e5-large"
+    assert search.embed_prefixes() == ("passage: ", "query: ")
+    assert search.remote_blocked_sensitivities() == ()  # 로컬은 나갈 데가 없다
+
+    monkeypatch.setenv("WIKI_EMBED_MODEL", "some/other-model")
+    assert search.embed_model_name() == "some/other-model"
+
+
+def test_openai_embedder_requires_key(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
+        search._openai_embedder()
+
+
+def test_openai_embedder_batches_and_restores_order(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "k-test")
+    monkeypatch.delenv("WIKI_EMBED_PROVIDER", raising=False)
+    monkeypatch.delenv("WIKI_EMBED_MODEL", raising=False)
+    monkeypatch.delenv("WIKI_EMBED_DIM", raising=False)
+    monkeypatch.setattr(search, "_OPENAI_BATCH", 2)
+    seen: list[dict] = []
+
+    def handler(request):
+        assert request.headers["authorization"] == "Bearer k-test"
+        assert request.url.path.endswith("/embeddings")
+        body = json.loads(request.content)
+        seen.append(body)
+        rows = [{"index": i, "embedding": [float(len(t)), 1.0]}
+                for i, t in enumerate(body["input"])]
+        # API가 순서를 뒤섞어 줘도 index로 복원돼야 한다
+        return httpx.Response(200, json={"data": list(reversed(rows))})
+
+    monkeypatch.setattr(search, "_openai_client", lambda: _mock_client(handler))
+    vecs = search._openai_embedder()(["a", "bb", "ccc"])
+    assert [v[0] for v in vecs] == [1.0, 2.0, 3.0]
+    assert [len(b["input"]) for b in seen] == [2, 1]  # 배치 크기 2로 쪼갠다
+    assert seen[0]["model"] == "text-embedding-3-large"
+    assert "dimensions" not in seen[0]
+
+
+def test_openai_embedder_sends_dimensions_when_set(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.setenv("WIKI_EMBED_DIM", "256")
+    seen: list[dict] = []
+
+    def handler(request):
+        body = json.loads(request.content)
+        seen.append(body)
+        return httpx.Response(200, json={"data": [{"index": 0, "embedding": [1.0]}]})
+
+    monkeypatch.setattr(search, "_openai_client", lambda: _mock_client(handler))
+    search._openai_embedder()(["x"])
+    assert seen[0]["dimensions"] == 256
+
+
+def test_openai_embedder_retries_then_succeeds(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.setattr(search.time, "sleep", lambda _s: None)
+    calls: list[int] = []
+
+    def handler(request):
+        calls.append(1)
+        if len(calls) == 1:
+            return httpx.Response(429, json={"error": "rate limit"})
+        if len(calls) == 2:
+            raise httpx.ConnectError("boom")
+        return httpx.Response(200, json={"data": [{"index": 0, "embedding": [0.5]}]})
+
+    monkeypatch.setattr(search, "_openai_client", lambda: _mock_client(handler))
+    assert search._openai_embedder()(["x"]) == [[0.5]]
+    assert len(calls) == 3
+
+
+def test_openai_embedder_raises_readable_error_after_retries(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.setattr(search.time, "sleep", lambda _s: None)
+
+    def handler(request):
+        return httpx.Response(500, json={"error": "server"})
+
+    monkeypatch.setattr(search, "_openai_client", lambda: _mock_client(handler))
+    # httpx 예외가 그대로 새어나오면 CLI가 트레이스백을 뱉는다 (httpx.HTTPError는 OSError가 아니다)
+    with pytest.raises(RuntimeError, match="HTTP 500"):
+        search._openai_embedder()(["x"])
+
+
+def test_openai_embedder_explains_bad_key(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-wrong")
+
+    def handler(request):
+        return httpx.Response(401, json={"error": "invalid api key"})
+
+    monkeypatch.setattr(search, "_openai_client", lambda: _mock_client(handler))
+    with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
+        search._openai_embedder()(["x"])
+    # 401은 재시도 대상이 아니다: 키가 틀렸는데 네 번 두드릴 이유가 없다
+
+
+def test_openai_embedder_explains_network_failure(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.setattr(search.time, "sleep", lambda _s: None)
+
+    def handler(request):
+        raise httpx.ConnectError("no route to host")
+
+    monkeypatch.setattr(search, "_openai_client", lambda: _mock_client(handler))
+    with pytest.raises(RuntimeError, match="연결하지 못했다"):
+        search._openai_embedder()(["x"])
+
+
+def test_openai_embedder_rejects_short_response(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+
+    def handler(request):
+        return httpx.Response(200, json={"data": [{"index": 0, "embedding": [1.0]}]})
+
+    monkeypatch.setattr(search, "_openai_client", lambda: _mock_client(handler))
+    with pytest.raises(RuntimeError, match="벡터"):
+        search._openai_embedder()(["a", "b"])
+
+
+def test_openai_embedder_skips_call_for_empty_input(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+
+    def handler(request):  # pragma: no cover - 호출되면 테스트 실패
+        raise AssertionError("빈 입력으로 API를 부르면 안 된다")
+
+    monkeypatch.setattr(search, "_openai_client", lambda: _mock_client(handler))
+    assert search._openai_embedder()([]) == []
+
+
+def test_vec_cache_path_separates_provider_and_model(monkeypatch, tmp_path):
+    monkeypatch.setenv("WIKI_EMBED_CACHE", str(tmp_path))
+    monkeypatch.delenv("WIKI_EMBED_MODEL", raising=False)
+    monkeypatch.setenv("WIKI_EMBED_PROVIDER", "openai")
+    remote = search._default_vec_cache().path.name
+    monkeypatch.setenv("WIKI_EMBED_PROVIDER", "local")
+    local = search._default_vec_cache().path.name
+    # 프로바이더를 바꿔도 차원이 다른 벡터가 한 파일에 섞이지 않아야 한다
+    assert remote != local and "openai" in remote and "local" in local
+
+
+def test_no_e5_prefix_on_openai_provider(vault, monkeypatch, tmp_path):
+    monkeypatch.setenv("WIKI_EMBED_PROVIDER", "openai")
+    monkeypatch.setenv("WIKI_EMBED_CACHE", str(tmp_path))
+    claims.create_claim(vault, claim="react hook effect timing", claim_type="technical_fact",
+                        source_refs=["s"], date_str="2026-01-01", seq=1)
+    seen: list[str] = []
+
+    def recording(texts):
+        seen.extend(texts)
+        return [[1.0, 0.0] for _ in texts]
+
+    monkeypatch.setattr(search, "_default_embedder", lambda: recording)
+    search.build_index(vault).query("react hook", k=1)
+    assert seen and not any(t.startswith(("passage: ", "query: ")) for t in seen)
+
+
+def _write_sensitive_doc(vault, sensitivity: str, name: str, title: str, body: str):
+    (vault / "01_Projects/acme").mkdir(parents=True, exist_ok=True)
+    (vault / f"01_Projects/acme/{name}.md").write_text(
+        f"---\nid: session-20260825-001\ntype: session\nsensitivity: {sensitivity}\n"
+        f"title: {title}\n---\n\n{body}\n", encoding="utf-8")
+
+
+def test_confidential_body_is_not_sent_but_work_is(vault, monkeypatch, tmp_path):
+    monkeypatch.setenv("WIKI_EMBED_PROVIDER", "openai")
+    monkeypatch.setenv("WIKI_EMBED_CACHE", str(tmp_path))
+    monkeypatch.delenv("WIKI_EMBED_SEND_SENSITIVE", raising=False)
+    _write_sensitive_doc(vault, "confidential", "secret-1",
+                         "acme secret rollout", "acme secret rollout detail")
+    _write_sensitive_doc(vault, "work", "workday-1",
+                         "bada deploy notes", "bada deploy notes detail")
+    for seq, text in enumerate(["react hook effect timing", "git commit message style",
+                                "python gil limits parallelism"], start=1):
+        claims.create_claim(vault, claim=text, claim_type="technical_fact",
+                            source_refs=["s"], date_str="2026-01-01", seq=seq)
+    sent: list[str] = []
+
+    def recording(texts):
+        sent.extend(texts)
+        return [[1.0, 0.0] for _ in texts]
+
+    monkeypatch.setattr(search, "_default_embedder", lambda: recording)
+    idx = search.build_index(vault)
+    assert not any("acme secret" in t for t in sent)   # confidential 본문은 안 나간다
+    assert any("bada deploy" in t for t in sent)       # work는 나간다 (사용자 결정)
+    assert any("react" in t for t in sent)
+    hits = [r["title"].lower() for r in idx.query("acme secret rollout", k=5)]
+    assert any("acme" in h for h in hits)              # BM25로는 여전히 찾힌다
+
+
+def test_send_sensitive_override_lets_confidential_through(vault, monkeypatch, tmp_path):
+    monkeypatch.setenv("WIKI_EMBED_PROVIDER", "openai")
+    monkeypatch.setenv("WIKI_EMBED_CACHE", str(tmp_path))
+    monkeypatch.setenv("WIKI_EMBED_SEND_SENSITIVE", "1")
+    _write_sensitive_doc(vault, "confidential", "session-1",
+                         "acme rollout notes", "acme rollout internal detail")
+    sent: list[str] = []
+
+    def recording(texts):
+        sent.extend(texts)
+        return [[1.0, 0.0] for _ in texts]
+
+    monkeypatch.setattr(search, "_default_embedder", lambda: recording)
+    search.build_index(vault)
+    assert any("acme" in t for t in sent)

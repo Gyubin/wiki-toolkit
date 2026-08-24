@@ -96,6 +96,11 @@ def create_app(vault: Path, embed_fn=None) -> FastAPI:
     async def conflict(request: Request, exc: FileExistsError):
         return JSONResponse({"detail": str(exc)}, status_code=409)
 
+    @app.exception_handler(RuntimeError)
+    async def unavailable(request: Request, exc: RuntimeError):
+        # 임베딩 provider 설정 문제(키 부재 등)를 500 대신 읽을 수 있는 503으로
+        return JSONResponse({"detail": str(exc)}, status_code=503)
+
     @app.post("/capture")
     def capture(body: CaptureBody):
         content = body.content

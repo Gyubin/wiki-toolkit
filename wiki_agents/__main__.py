@@ -4,6 +4,9 @@ The vault lives outside this code repo. Resolution order: explicit positional ar
 `$WIKI_VAULT` > cwd. Every subcommand goes through `resolve_vault` so none silently
 operates on the wrong directory. Only `init` creates or modifies the vault structure;
 the other subcommands refuse a directory that does not look like a vault.
+
+환경값은 셸에서 오는 것이 기본이고, 없으면 `$WIKI_ENV_FILE`(기본값: 이 repo 루트의 `.env`)에서
+채운다. MCP 서버는 Claude Code가 띄우기 때문에 셸 rc 파일을 거치지 않을 수 있어서 이 통로가 있다.
 """
 from __future__ import annotations
 
@@ -18,6 +21,41 @@ from .app import create_app
 from .core import lint as lint_core
 from .core import scaffold
 from .core import search as search_core
+
+
+def env_file_path() -> Path:
+    override = os.environ.get("WIKI_ENV_FILE")
+    return Path(override) if override else Path(__file__).resolve().parent.parent / ".env"
+
+
+def load_env_file(path: Path | None = None) -> list[str]:
+    """`.env`의 KEY=VALUE를 os.environ에 채운다. 이미 있는 값은 덮어쓰지 않는다.
+
+    셸이 우선이다: 셸에 있는 값을 파일이 조용히 바꿔버리면 어느 값으로 돌고 있는지 알 수 없다.
+    반환값은 이번에 채운 키 목록 (값은 절대 로그에 남기지 않는다).
+    """
+    target = Path(path) if path else env_file_path()
+    try:
+        raw_text = target.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    filled: list[str] = []
+    for raw in raw_text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export "):].lstrip()
+        key, sep, value = line.partition("=")
+        if not sep:
+            continue
+        key, value = key.strip(), value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        if key and key not in os.environ:
+            os.environ[key] = value
+            filled.append(key)
+    return filled
 
 
 def resolve_vault(explicit: str | None = None) -> Path:
@@ -53,6 +91,7 @@ def _run_mcp_stdio(vault: Path) -> None:
 
 
 def main() -> None:
+    load_env_file()
     args = sys.argv[1:]
     cmd = args[0] if args else "serve"
 
@@ -83,7 +122,11 @@ def main() -> None:
             print("usage: wiki search [vault] <query...>")
             sys.exit(2)
         vault = _require_vault(resolve_vault(explicit))
-        idx = search_core.build_index(vault)
+        try:
+            idx = search_core.build_index(vault)
+        except RuntimeError as e:  # 임베딩 provider 설정 문제는 트레이스백 없이 안내한다
+            print(str(e))
+            sys.exit(2)
         for r in idx.query(" ".join(rest), 8):
             print(f"[{r['score']}] {r['title']} ({r['ref']})")
         return
