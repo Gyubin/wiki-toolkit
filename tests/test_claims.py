@@ -116,3 +116,55 @@ def test_index_lines_contain_no_em_dash(vault):
     _make(vault, seq=1)
     text = (vault / "06_Metadata/indexes/claim-index.md").read_text(encoding="utf-8")
     assert "—" not in text
+
+
+def test_create_claim_with_quote_embeds_the_source_passage(vault):
+    """claim만 열어도 왜 그 주장이 나왔는지 보여야 한다.
+
+    claim 텍스트는 정리된 한국어이고 원문은 대개 영어라, 원문을 같이 두지 않으면
+    Verify할 때 원문을 다시 열어야 한다. 안 열면 미묘하게 비튼 claim이 그대로 통과한다.
+    """
+    path = claims.create_claim(
+        vault, claim="샌드박스 안에는 수명이 긴 자격증명을 두지 않는다.",
+        claim_type="decision", source_refs=["source-20260607-001"],
+        date_str="2026-06-07", seq=1,
+        quote="Credentials cannot live where the agent lives.",
+    )
+    body = path.read_text(encoding="utf-8")
+    assert "## 원문" in body
+    assert "> Credentials cannot live where the agent lives." in body
+
+
+def test_quote_blockquote_survives_blank_lines(vault):
+    """빈 줄에 '>'를 안 붙이면 markdown blockquote가 거기서 끊긴다."""
+    path = claims.create_claim(
+        vault, claim="두 겹으로 호출자를 확인한다.", claim_type="technical_fact",
+        source_refs=["source-20260607-001"], date_str="2026-06-07", seq=2,
+        quote="First an IP allowlist.\n\nThen a short-lived JWT.",
+    )
+    _, body = schema.parse_doc(path.read_text(encoding="utf-8"))
+    quoted = body.split("## 원문", 1)[1].strip().splitlines()
+    assert quoted, "인용 절이 비었다"
+    assert all(ln.startswith(">") for ln in quoted), quoted
+
+
+def test_create_claim_without_quote_is_byte_identical_to_before(vault):
+    """quote를 안 주면 예전 본문 그대로여야 한다 (기존 claim 18개 회귀 방지)."""
+    path = claims.create_claim(
+        vault, claim="원문 없는 주장", claim_type="opinion",
+        source_refs=["s"], date_str="2026-06-07", seq=3,
+    )
+    _, body = schema.parse_doc(path.read_text(encoding="utf-8"))
+    assert body == "## Claim\n\n원문 없는 주장\n"
+
+
+def test_quote_survives_a_status_change(vault):
+    path = claims.create_claim(
+        vault, claim="상태가 바뀌어도 원문은 남는다", claim_type="observation",
+        source_refs=["s"], date_str="2026-06-07", seq=4,
+        quote="the original wording",
+    )
+    cid = path.stem
+    moved = claims.promote_claim(vault, cid, target_status="attributed",
+                                 date_str="2026-06-08")
+    assert "> the original wording" in moved.read_text(encoding="utf-8")

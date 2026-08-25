@@ -29,11 +29,27 @@ def normalize_key(text: str, speaker: str | None = None) -> str:
     return key + (f"|{speaker.lower()}" if speaker else "")
 
 
+def blockquote(text: str) -> str:
+    """모든 줄을 markdown blockquote로 만든다.
+
+    빈 줄에 `>`를 안 붙이면 blockquote가 거기서 끊겨서, 한 인용이 두 덩어리로 보인다.
+    """
+    return "\n".join(f"> {ln}" if ln.strip() else ">" for ln in text.strip().splitlines())
+
+
 def create_claim(
     vault: Path, *, claim: str, claim_type: str, source_refs: list[str],
     date_str: str, seq: int, proposed_status: str | None = None,
     speaker: str | None = None, sensitivity: str = "personal",
+    quote: str | None = None,
 ) -> Path:
+    """`quote`는 이 claim의 근거가 된 원문 문단. 본문에 `## 원문`으로 붙는다.
+
+    claim 텍스트는 정리된 한국어이고 원문은 대개 영어라, 원문을 같이 두지 않으면
+    Verify할 때 원문 파일을 다시 열어야 한다. 안 열면 원문을 미묘하게 비튼 claim이
+    그대로 통과한다. 검색에도 걸린다: search.iter_docs가 본문을 인덱싱하므로
+    원문 표현으로 찾아도 claim이 나온다.
+    """
     schema.validate_claim_type(claim_type)
     cid = schema.make_id("claim", date_str, seq)
     meta = {
@@ -47,7 +63,10 @@ def create_claim(
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
         raise FileExistsError(f"{cid} already exists; pick a fresh seq")
-    path.write_text(schema.render_doc(meta, f"## Claim\n\n{claim}\n"), encoding="utf-8")
+    body = f"## Claim\n\n{claim}\n"
+    if quote and quote.strip():
+        body += f"\n## 원문\n\n{blockquote(quote)}\n"
+    path.write_text(schema.render_doc(meta, body), encoding="utf-8")
     index.update_index(vault, "claim-index", cid, f"{claim[:60]} - unverified")
     return path
 

@@ -103,3 +103,25 @@ async def test_write_tool_survives_a_broken_file_elsewhere_in_the_vault(vault):
     res = await h["create_claim"].handler({"claim": "테스트 주장", "claim_type": "opinion"})
     assert "created" in res["content"][0]["text"]
     assert list((vault / "10_Claims/pending").glob("claim-*.md"))
+
+
+async def test_create_claim_tool_passes_quote_through(vault):
+    h = {t.name: t for t in tools.build_wiki_tools(vault)}
+    await h["create_claim"].handler({
+        "claim": "브리지가 호스트 쪽에서 토큰을 붙인다",
+        "claim_type": "technical_fact",
+        "source_refs": ["source-20260825-001"],
+        "quote": "The bridge attaches the OAuth token on the host side.",
+    })
+    files = list((vault / "10_Claims/pending").glob("claim-*.md"))
+    assert len(files) == 1
+    body = files[0].read_text(encoding="utf-8")
+    assert "## 원문" in body
+    assert "> The bridge attaches the OAuth token on the host side." in body
+
+
+def test_create_claim_advertises_quote_as_optional(vault):
+    spec = next(t for t in tools.build_wiki_tools(vault) if t.name == "create_claim")
+    props = spec.input_schema["properties"]
+    assert "quote" in props
+    assert "quote" not in spec.input_schema["required"]

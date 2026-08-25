@@ -39,6 +39,8 @@ violation fails the test, not a code review.
   봇 차단 페이지(`_BOTWALL_MARKERS`)는 `create_source`가 거부한다.
 - `core/claims.py` — claim lifecycle: create (always `unverified`), dedup key, `promote_claim`
   (`verified`는 `evidence_refs`가 유일한 통로), status changes.
+  `create_claim(quote=...)`은 근거가 된 원문 문단을 본문 `## 원문` 절에 blockquote로 넣는다.
+  claim 텍스트는 정리된 한국어이고 원문은 대개 영어라, 없으면 검토할 때 원문을 다시 열어야 한다.
 - `core/wiki.py` — human-readable wiki pages with enforced frontmatter + index entry.
 - `core/learning.py` — learning items + spaced-repetition review driver.
 - `core/git.py` — read-only git session collection for wrap + commit_vault (감사 추적용 자동 커밋).

@@ -103,15 +103,19 @@ def build_wiki_tools(vault: Path) -> list:
         return _done("recorded", [])
 
     @tool("create_claim", "Create an atomic claim (always unverified). "
-          "Always pass source_refs so the claim stays source-linked.",
+          "Always pass source_refs so the claim stays source-linked, and quote with the "
+          "source passage this claim came from, copied verbatim (do not summarize or "
+          "translate it) so the claim can be checked without reopening the source.",
           _schema({"claim": _STR, "claim_type": _STR},
-                  {"source_refs": _STR_LIST, "proposed_status": _STR, "speaker": _STR}))
+                  {"source_refs": _STR_LIST, "proposed_status": _STR, "speaker": _STR,
+                   "quote": _STR}))
     async def create_claim(args):
         p = claims.create_claim(
             vault, claim=args["claim"], claim_type=args["claim_type"],
             source_refs=args.get("source_refs", []), date_str=schema.today_str(),
             seq=ids.next_seq(vault, "claim", schema.today_str(), ["10_Claims"]),
             proposed_status=args.get("proposed_status"), speaker=args.get("speaker"),
+            quote=args.get("quote"),
         )
         return _done(f"created {p.stem} (unverified)", ["10_Claims"])
 
