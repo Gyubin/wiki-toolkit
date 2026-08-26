@@ -18,3 +18,12 @@ Spec: `../specs/2026-08-27-verbatim-capture-design.md`
 - [ ] source 4개 Raw 본문을 원본(커밋 c8a24c8) 기준으로 재작성해 `update_source_raw`로 교체
 - [ ] `wiki lint`로 `quote_not_in_source`가 몇 건인지 확인
 - [ ] 남은 claim 인용문을 `update_claim_quote`로 교정, lint 0건 확인
+
+## 검토표
+
+- [x] `tools/review_template.html` + `tools/render_review.py`: source 하나의 pending claim을
+      원문과 나란히 놓고 판정하는 HTML을 찍는다. 내용은 vault 파일에서만 읽고, 표시(marks)도
+      전부 기계로 뽑는다 (인용문 미일치, 인용문 없음/짧음, 제 문장에는 있는데 인용문에는 없는
+      숫자, attributed 제안인데 speaker 없음). 사람이나 모델이 claim 문장을 다시 옮겨 적는
+      단계가 없다.
+- [x] 2026-08-27 실제 vault 4개 source에 돌려 72건 중 7건에 숫자 표시가 붙는 것을 확인
