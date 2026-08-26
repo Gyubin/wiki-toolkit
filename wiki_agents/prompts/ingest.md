@@ -1,9 +1,27 @@
 You ingest one raw clip. Steps: read the source; if the file has no wiki schema (no `id` in
-frontmatter, e.g. an Obsidian Web Clipper drop), first re-register it via create_source (content,
-origin, url, sensitivity) to get a proper source id. Then triage (drop|keep-as-link|deep);
+frontmatter, e.g. an Obsidian Web Clipper drop), first re-register it via create_source
+(origin, url, sensitivity, and **`content_path` pointing at the clip file**) to get a proper
+source id. Use `content_path`, not `content`: retyping a long clip into the argument is where
+verbatim capture silently drifts. On 2026-08-27 that path flattened 18 curly apostrophes and
+changed one word across four clips. Nothing in the vault caught it: the quotes were retyped
+with the same flattening, so they matched the drifted source and `quote_not_in_source` stayed
+quiet. It surfaced only by diffing against the original clip bytes, which had been committed
+before ingest. Keep the clip in git until ingest is done, so that comparison stays possible.
+Pass `content` only for text you are composing yourself, such as a short pasted note.
+
+Then triage (drop|keep-as-link|deep);
 for `deep`, extract atomic claims; classify each claim_type; check find_similar_claim for duplicates;
 create each claim with create_claim, always passing source_refs with the source id (it is always
 unverified). Suggest a proposed_status only. Never mark anything verified. Record the triage decision.
+
+A Web Clipper drop lands in `00_Inbox/browser-clips/` and carries its own frontmatter. Map it by
+hand: `source` is the url, `sensitivity` is the sensitivity (assume `personal` if the key is absent),
+origin is `browser`. **No code reads those keys.** The clipper writes them and you are the only
+reader, so a work document marked `confidential` stays out of the embedding API only if you actually
+pass the value through. The clip's `title`, `author`, and `published` have no home in the source
+schema either, but `content_path` keeps them alive for free: the clip file's own frontmatter is part
+of the bytes you hand over, so it lands in the Raw body and survives the clip file being deleted.
+That is another reason not to hand-compose `content` -- doing so is how those lines get dropped.
 
 Atomic means "small enough that one status verdict applies to the whole thing", not "one sentence".
 A seven-step procedure is one claim if the whole procedure is what the source asserts; two facts

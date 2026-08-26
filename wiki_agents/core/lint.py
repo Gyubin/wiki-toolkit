@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 from .. import schema
-from .claims import _STATUS_DIR, normalize_key
+from .claims import _STATUS_DIR, extract_quote, normalize_key
 
 _SEV_ORDER = {"error": 0, "warning": 1, "info": 2}
 
@@ -27,6 +27,15 @@ _ID_SHAPED = re.compile(r"^(?:source|claim|session|decision|learning)-\d{8}-\d+$
 # 껍데기만 내려오는 경우가 있어서 여기서 보고한다. 짧은 붙여넣기 메모도 걸리므로
 # 하드 블록이 아니라 warning이다.
 _MIN_SOURCE_CHARS = 200
+
+# 인용문 안에서 "여기를 건너뛰었다"를 나타내는 표시. quote_not_in_source는 이 기준으로
+# 쪼개 조각별로 원문에서 찾는다.
+_ELISION = "(...)"
+
+
+def _norm_ws(s: str) -> str:
+    """공백만 접는다. 줄바꿈 위치는 인용문 판정 대상이 아니다."""
+    return re.sub(r"\s+", " ", s).strip()
 
 
 def _parse_full(p: Path) -> tuple[dict, str] | None:
@@ -64,11 +73,17 @@ def run_checks(vault: Path, today_str: str) -> list[dict]:
     claim_metas: list[dict] = []
     id_files: dict[str, list[str]] = {}
 
+    quoted: list[tuple[str, list[str], str]] = []  # (claim ref, source_refs, 인용문)
+
     for p in (vault / "10_Claims").rglob("claim-*.md"):
-        meta = _parse(p)
-        if meta is None:
+        parsed = _parse_full(p)
+        if parsed is None:
             continue  # 아래 전체 순회에서 unparseable로 보고된다
+        meta, claim_body = parsed
         claim_metas.append(meta)
+        quote = extract_quote(claim_body)
+        if quote:
+            quoted.append((meta.get("id", str(p)), list(meta.get("source_refs") or []), quote))
         d = p.parent.name
         status = meta.get("status")
         ref = meta.get("id", str(p))
@@ -97,6 +112,7 @@ def run_checks(vault: Path, today_str: str) -> list[dict]:
             findings.append(_f("orphan_wiki", "info", meta.get("name", str(p)),
                                "wiki page has no claim_refs"))
 
+    source_bodies: dict[str, str] = {}
     for p in (vault / "00_Inbox").rglob("*.md"):
         parsed = _parse_full(p)
         if parsed is None:
@@ -104,12 +120,32 @@ def run_checks(vault: Path, today_str: str) -> list[dict]:
         meta, body = parsed
         if meta.get("type") != "source":
             continue
+        if meta.get("id"):
+            source_bodies[str(meta["id"])] = _norm_ws(body)
         size = len(body.strip())
         if size < _MIN_SOURCE_CHARS:
             findings.append(_f("thin_source", "warning",
                                meta.get("id", str(p.relative_to(vault))),
                                f"source body is only {size} chars (under {_MIN_SOURCE_CHARS}); "
                                "a failed capture looks like this"))
+
+    # claim의 인용문이 그 source의 Raw 본문에 문자 그대로 있는지 본다.
+    #
+    # 계약(prompts/ingest.md)은 인용문을 "copied verbatim"으로 요구하는데, 그걸 지켰는지
+    # 보는 검사가 없었다. 2026-08-27에 클립 4개를 인제스트하면서 곱슬따옴표 18개와 단어
+    # 하나를 바꿔 적었고, claim 72개 중 6개의 인용문이 원본에 없는 문자열이 됐다. 그때
+    # 돌린 확인은 "인용문 블록이 있는가"였어서 전부 통과했다.
+    for ref, refs, quote in quoted:
+        bodies = [source_bodies[r] for r in refs if r in source_bodies]
+        if not bodies:
+            continue  # source가 vault에 없으면 판정 불가 (dangling_ref가 보고한다)
+        hay = " ".join(bodies)
+        missing = [seg for seg in (_norm_ws(x) for x in quote.split(_ELISION))
+                   if seg and seg not in hay]
+        if missing:
+            findings.append(_f("quote_not_in_source", "warning", ref,
+                               f"quote is not verbatim in {', '.join(refs)}; "
+                               f"first unmatched: {missing[0][:60]!r}"))
 
     all_refs: list[tuple[str, str]] = []  # (참조하는 문서 ref, 참조되는 id)
     for p in vault.rglob("*.md"):

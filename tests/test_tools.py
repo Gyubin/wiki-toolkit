@@ -125,3 +125,87 @@ def test_create_claim_advertises_quote_as_optional(vault):
     props = spec.input_schema["properties"]
     assert "quote" in props
     assert "quote" not in spec.input_schema["required"]
+
+
+def test_repair_tool_names_present():
+    assert "mcp__wiki__update_source_raw" in tools.WIKI_TOOL_NAMES
+    assert "mcp__wiki__update_claim_quote" in tools.WIKI_TOOL_NAMES
+
+
+async def test_create_source_reads_content_from_a_path(vault, tmp_path):
+    """큰 클립을 도구 인자로 다시 타이핑하지 않게 하는 통로.
+
+    2026-08-27에 119KB짜리 클립 4개를 문자열로 다시 적다가 곱슬따옴표 18개와
+    단어 하나를 바꿔 적었다. 파일에서 읽으면 그 단계가 없어진다.
+    """
+    clip = tmp_path / "clip.md"
+    clip.write_text("원문 그대로 “곱슬” 그리고 harness’s\n" * 20, encoding="utf-8")
+    h = {t.name: t for t in tools.build_wiki_tools(vault)}
+    await h["create_source"].handler({
+        "origin": "browser", "content_path": str(clip), "url": "http://x"})
+    written = next((vault / "00_Inbox/raw").glob("source-*.md")).read_text(encoding="utf-8")
+    assert "harness’s" in written
+    assert "“곱슬”" in written
+
+
+async def test_create_source_rejects_both_content_and_path(vault, tmp_path):
+    import pytest
+    clip = tmp_path / "clip.md"
+    clip.write_text("본문" * 200, encoding="utf-8")
+    h = {t.name: t for t in tools.build_wiki_tools(vault)}
+    with pytest.raises(ValueError, match="exactly one"):
+        await h["create_source"].handler({
+            "origin": "browser", "content": "본문" * 200, "content_path": str(clip)})
+
+
+async def test_create_source_rejects_neither_content_nor_path(vault):
+    import pytest
+    h = {t.name: t for t in tools.build_wiki_tools(vault)}
+    with pytest.raises(ValueError, match="exactly one"):
+        await h["create_source"].handler({"origin": "browser"})
+
+
+def test_create_source_advertises_content_path_as_optional(vault):
+    spec = next(t for t in tools.build_wiki_tools(vault) if t.name == "create_source")
+    props = spec.input_schema["properties"]
+    assert "content_path" in props
+    assert "content_path" not in spec.input_schema["required"]
+    assert "content" not in spec.input_schema["required"]
+
+
+async def test_update_source_raw_tool_reads_a_path(vault, tmp_path):
+    h = {t.name: t for t in tools.build_wiki_tools(vault)}
+    await h["create_source"].handler({"origin": "browser", "content": "옛 본문" * 100})
+    fixed = tmp_path / "fixed.md"
+    fixed.write_text("고친 본문 harness’s\n" * 30, encoding="utf-8")
+    sid = next((vault / "00_Inbox/raw").glob("source-*.md")).stem
+    out = await h["update_source_raw"].handler({
+        "source_id": sid, "content_path": str(fixed), "reason": "원본 대조"})
+    assert "updated" in out["content"][0]["text"]
+    body = (vault / "00_Inbox/raw" / f"{sid}.md").read_text(encoding="utf-8")
+    assert "harness’s" in body
+    assert "옛 본문" not in body
+
+
+async def test_update_claim_quote_tool_fixes_a_quote(vault):
+    h = {t.name: t for t in tools.build_wiki_tools(vault)}
+    created = await h["create_claim"].handler({
+        "claim": "주장", "claim_type": "technical_fact",
+        "source_refs": ["source-20260827-001"], "quote": "원문 뻔했음"})
+    cid = created["content"][0]["text"].split()[1]
+    await h["update_claim_quote"].handler({
+        "claim_id": cid, "quote": "원문 뻔함", "reason": "원본 대조 결과 단어를 바꿔 적었다"})
+    body = next((vault / "10_Claims/pending").glob("claim-*.md")).read_text(encoding="utf-8")
+    assert "> 원문 뻔함" in body
+    assert "뻔했음" not in body
+
+
+def test_declared_names_match_the_built_tools(vault):
+    """WIKI_TOOL_NAMES와 실제 도구 목록이 갈라지면 안 된다.
+
+    도구를 추가하면서 목록 갱신을 잊으면 Claude Code 쪽 허용 목록에서 빠지는데,
+    증상은 "도구가 안 보인다"라서 코드가 아니라 서버가 낡았다고 오진하기 쉽다.
+    """
+    built = {t.name for t in tools.build_wiki_tools(vault)}
+    declared = {n.removeprefix("mcp__wiki__") for n in tools.WIKI_TOOL_NAMES}
+    assert built == declared

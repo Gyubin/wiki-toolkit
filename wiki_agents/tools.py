@@ -11,6 +11,7 @@ from .core import claims, git, ids, learning, pipeline, projects, search, source
 
 WIKI_TOOL_NAMES = [
     "mcp__wiki__create_source", "mcp__wiki__triage_record",
+    "mcp__wiki__update_source_raw", "mcp__wiki__update_claim_quote",
     "mcp__wiki__create_claim", "mcp__wiki__find_similar_claim",
     "mcp__wiki__promote_claim", "mcp__wiki__set_claim_status",
     "mcp__wiki__list_pending", "mcp__wiki__create_wiki_page",
@@ -43,6 +44,28 @@ def _schema(required: dict, optional: dict | None = None) -> dict:
 _STR = {"type": "string"}
 _INT = {"type": "integer"}
 _STR_LIST = {"type": "array", "items": {"type": "string"}}
+
+
+def resolve_content(args: dict) -> str:
+    """`content` 또는 `content_path` 중 정확히 하나를 받아 본문 문자열을 돌려준다.
+
+    긴 클립을 `content`로 넘기려면 모델이 원문을 도구 인자로 다시 타이핑해야 하고,
+    거기서 조용히 뒤틀린다. 2026-08-27에 119KB짜리 클립 4개를 그렇게 넣다가 곱슬따옴표
+    18개를 곧은 따옴표로 바꿔 적었고 한 곳은 단어를 바꿨다. 파일에서 읽으면 그 단계가
+    아예 없어진다.
+
+    둘 다 주거나 둘 다 안 주면 거부한다. 조용히 하나를 고르면 어느 쪽이 쓰였는지
+    나중에 알 수 없다.
+    """
+    text, path = args.get("content"), args.get("content_path")
+    if (text is None) == (path is None):
+        raise ValueError("pass exactly one of content or content_path")
+    if path is not None:
+        p = Path(path).expanduser()
+        if not p.is_file():
+            raise FileNotFoundError(f"content_path is not a file: {p}")
+        return p.read_text(encoding="utf-8")
+    return text
 
 
 def resolve_wiki_page_path(vault: Path, rel: str) -> Path:
@@ -83,12 +106,15 @@ def build_wiki_tools(vault: Path) -> list:
         git.commit_vault(vault, f"wiki: {text}", paths=[*paths, "06_Metadata"])
         return _ok(_with_next_step(text))
 
-    @tool("create_source", "Capture a raw clip as a source in the Inbox",
-          _schema({"origin": _STR, "content": _STR},
-                  {"sensitivity": _STR, "url": _STR}))
+    @tool("create_source",
+          "Capture a raw clip as a source in the Inbox. Pass content_path (a file) "
+          "instead of content for anything long: retyping a clip into the argument is "
+          "where verbatim capture silently drifts.",
+          _schema({"origin": _STR},
+                  {"content": _STR, "content_path": _STR, "sensitivity": _STR, "url": _STR}))
     async def create_source(args):
         p = sources.create_source(
-            vault, origin=args["origin"], content=args["content"],
+            vault, origin=args["origin"], content=resolve_content(args),
             sensitivity=args.get("sensitivity", "personal"),
             date_str=schema.today_str(),
             seq=ids.next_seq(vault, "source", schema.today_str(), ["00_Inbox"]),
@@ -101,6 +127,27 @@ def build_wiki_tools(vault: Path) -> list:
     async def triage_record(args):
         sources.triage_record(vault, args["source_id"], args["decision"], schema.today_str())
         return _done("recorded", [])
+
+    @tool("update_source_raw",
+          "Rewrite a source's ## Raw body; frontmatter is untouched. Requires a reason. "
+          "Use content_path to restore from the original capture without retyping it.",
+          _schema({"source_id": _STR, "reason": _STR},
+                  {"content": _STR, "content_path": _STR}))
+    async def update_source_raw(args):
+        p = sources.update_source_raw(
+            vault, args["source_id"], content=resolve_content(args), reason=args["reason"])
+        return _done(f"updated {p.stem} raw body", ["00_Inbox"])
+
+    @tool("update_claim_quote",
+          "Replace a claim's ## 원문 block so it matches the source verbatim. "
+          "Never touches the claim text, its status, or which folder it lives in. "
+          "Requires a reason.",
+          _schema({"claim_id": _STR, "quote": _STR, "reason": _STR}))
+    async def update_claim_quote(args):
+        p = claims.update_claim_quote(
+            vault, args["claim_id"], quote=args["quote"], reason=args["reason"],
+            date_str=schema.today_str())
+        return _done(f"updated {p.stem} quote", ["10_Claims"])
 
     @tool("create_claim", "Create an atomic claim (always unverified). "
           "Always pass source_refs so the claim stays source-linked, and quote with the "
@@ -265,7 +312,8 @@ def build_wiki_tools(vault: Path) -> list:
                          for r in results) or "no results"
         return _ok(text)
 
-    return [create_source, triage_record, create_claim, find_similar_claim,
+    return [create_source, triage_record, update_source_raw, update_claim_quote,
+            create_claim, find_similar_claim,
             promote_claim, set_claim_status, list_pending, create_wiki_page,
             update_wiki_page, create_learning_item, list_due_reviews, record_review,
             collect_git_session, create_session_summary, create_decision, search_wiki,

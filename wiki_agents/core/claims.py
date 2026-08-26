@@ -37,6 +37,30 @@ def blockquote(text: str) -> str:
     return "\n".join(f"> {ln}" if ln.strip() else ">" for ln in text.strip().splitlines())
 
 
+def unblockquote(text: str) -> str:
+    """`blockquote`의 역. `## 원문` 블록에서 원문 텍스트를 되찾을 때 쓴다."""
+    out = []
+    for ln in text.splitlines():
+        if ln.startswith("> "):
+            out.append(ln[2:])
+        elif ln.strip() == ">":
+            out.append("")
+        else:
+            out.append(ln)
+    return "\n".join(out).strip()
+
+
+QUOTE_HEADING = "## 원문"
+
+
+def extract_quote(body: str) -> str:
+    """claim 본문에서 원문 인용을 꺼낸다. 없으면 빈 문자열."""
+    marker = f"\n{QUOTE_HEADING}\n"
+    if marker not in body:
+        return ""
+    return unblockquote(body.split(marker, 1)[1])
+
+
 def create_claim(
     vault: Path, *, claim: str, claim_type: str, source_refs: list[str],
     date_str: str, seq: int, proposed_status: str | None = None,
@@ -65,9 +89,39 @@ def create_claim(
         raise FileExistsError(f"{cid} already exists; pick a fresh seq")
     body = f"## Claim\n\n{claim}\n"
     if quote and quote.strip():
-        body += f"\n## 원문\n\n{blockquote(quote)}\n"
+        body += f"\n{QUOTE_HEADING}\n\n{blockquote(quote)}\n"
     path.write_text(schema.render_doc(meta, body), encoding="utf-8")
     index.update_index(vault, "claim-index", cid, f"{claim[:60]} - unverified")
+    return path
+
+
+def update_claim_quote(
+    vault: Path, claim_id: str, *, quote: str, reason: str, date_str: str,
+) -> Path:
+    """`## 원문` 블록만 교체한다. **claim 문장과 status는 건드리지 않는다.**
+
+    claim 문장을 바꾸는 것은 주장하는 내용을 바꾸는 일이고, 인용문을 원본과 맞추는 것은
+    전사 오류를 고치는 일이다. 성격이 다르므로 한 도구에 얹지 않는다. 얹으면 "인용문
+    고친다"면서 주장을 슬쩍 바꾸는 경로가 생기고, 그건 파일만 봐서는 구별되지 않는다.
+
+    파일을 옮기지도 않는다. 승격된 claim의 인용문을 고쳤다고 pending으로 되돌아가면
+    사람이 한 승인이 조용히 취소된다.
+    """
+    if not reason.strip():
+        raise ValueError(
+            "update_claim_quote needs a reason (why this quote is being rewritten)")
+    if not quote.strip():
+        raise ValueError("quote must not be empty")
+    path = _find_file(vault, claim_id)
+    meta, body = schema.parse_doc(path.read_text(encoding="utf-8"))
+    head = body.split(f"\n{QUOTE_HEADING}\n", 1)[0].rstrip("\n")
+    new_body = f"{head}\n\n{QUOTE_HEADING}\n\n{blockquote(quote)}\n"
+    if new_body == body:
+        raise ValueError(f"{claim_id} quote is unchanged; nothing to write")
+    meta["updated"] = date_str
+    path.write_text(schema.render_doc(meta, new_body), encoding="utf-8")
+    index.append_log(vault, "ingest-log",
+                     f"quote rewritten for {claim_id} ({reason.strip()})")
     return path
 
 

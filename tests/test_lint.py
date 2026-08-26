@@ -162,3 +162,61 @@ def test_binary_inbox_file_does_not_crash_lint(vault):
     (vault / "00_Inbox/blob.md").write_bytes(b"\xff\xfe\x00\x00binary junk")
     checks = {f["check"] for f in lint.run_checks(vault, "2026-06-07")}
     assert "unparseable" in checks
+
+
+def _seed_quote(vault, quote):
+    """source 하나와 그 source를 인용하는 claim 하나."""
+    sources.create_source(
+        vault, origin="browser",
+        content="앞부분입니다. " * 10 + "The harness owns the loop. " + "뒷부분입니다. " * 10,
+        date_str="2026-08-27", seq=1, url="http://x")
+    claims.create_claim(vault, claim="harness가 루프를 소유한다", claim_type="technical_fact",
+                        source_refs=["source-20260827-001"], date_str="2026-08-27", seq=1,
+                        quote=quote)
+
+
+def test_quote_not_in_source_is_silent_when_verbatim(vault):
+    _seed_quote(vault, "The harness owns the loop.")
+    checks = {f["check"] for f in lint.run_checks(vault, "2026-08-27")}
+    assert "quote_not_in_source" not in checks
+
+
+def test_quote_not_in_source_flags_a_drifted_quote(vault):
+    """원문에 없는 문자열이 인용문으로 들어가면 보고한다 (2026-08-27 실제 사고)."""
+    _seed_quote(vault, "The harness owns the loops.")
+    found = [f for f in lint.run_checks(vault, "2026-08-27")
+             if f["check"] == "quote_not_in_source"]
+    assert len(found) == 1
+    assert found[0]["ref"] == "claim-20260827-001"
+    assert found[0]["severity"] == "warning"
+
+
+def test_quote_not_in_source_ignores_line_wrapping(vault):
+    """줄바꿈 위치는 판정 대상이 아니다. 공백만 접어서 비교한다."""
+    _seed_quote(vault, "The harness\nowns   the loop.")
+    checks = {f["check"] for f in lint.run_checks(vault, "2026-08-27")}
+    assert "quote_not_in_source" not in checks
+
+
+def test_quote_not_in_source_allows_elision_marker(vault):
+    _seed_quote(vault, "앞부분입니다. (...) The harness owns the loop.")
+    checks = {f["check"] for f in lint.run_checks(vault, "2026-08-27")}
+    assert "quote_not_in_source" not in checks
+
+
+def test_quote_not_in_source_skips_claims_whose_source_is_absent(vault):
+    """source가 vault에 없으면 판정하지 않는다 (dangling_ref가 이미 보고한다)."""
+    claims.create_claim(vault, claim="주장", claim_type="opinion",
+                        source_refs=["source-20990101-001"], date_str="2026-08-27", seq=1,
+                        quote="아무 원문")
+    checks = {f["check"] for f in lint.run_checks(vault, "2026-08-27")}
+    assert "quote_not_in_source" not in checks
+
+
+def test_quote_not_in_source_skips_claims_without_a_quote(vault):
+    sources.create_source(vault, origin="browser", content="본문" * 200,
+                          date_str="2026-08-27", seq=1)
+    claims.create_claim(vault, claim="인용 없는 주장", claim_type="opinion",
+                        source_refs=["source-20260827-001"], date_str="2026-08-27", seq=1)
+    checks = {f["check"] for f in lint.run_checks(vault, "2026-08-27")}
+    assert "quote_not_in_source" not in checks
