@@ -35,6 +35,16 @@ NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
 
 MIN_QUOTE_CHARS = 40
 
+# 영어 원문은 작은 수를 단어로 쓴다 ("serve ten times more users"). 숫자 대조가 그걸
+# 못 읽으면 멀쩡한 claim마다 표시가 붙고, 표시가 흔해지면 통째로 무시된다.
+WORD_NUMBERS = {
+    "one": "1", "two": "2", "three": "3", "four": "4", "five": "5", "six": "6",
+    "seven": "7", "eight": "8", "nine": "9", "ten": "10", "eleven": "11",
+    "twelve": "12", "twenty": "20", "thirty": "30", "fifty": "50",
+    "hundred": "100", "thousand": "1000", "million": "1000000",
+    "half": "2", "twice": "2", "double": "2",
+}
+
 
 def norm_ws(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
@@ -79,7 +89,9 @@ def marks_for(claim: str, quote: str, source_hay: str, meta: dict) -> list[dict]
             "detail": "",
         })
 
-    hay_num = norm_numbers(norm_ws(quote))
+    hay = norm_ws(quote)
+    spelled = [d for w, d in WORD_NUMBERS.items() if re.search(rf"\b{w}\b", hay, re.I)]
+    hay_num = norm_numbers(hay) + " " + " ".join(spelled)
     absent = []
     for tok in NUMBER.findall(norm_numbers(norm_ws(claim))):
         if tok not in hay_num and tok not in absent:

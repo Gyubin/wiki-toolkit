@@ -188,6 +188,8 @@
   .docket .id { color: var(--ink); font-weight: 500; }
   .docket .spacer { flex: 1 1 auto; }
 
+  .chip[data-settled="yes"] { border-color: var(--settled); color: var(--settled); }
+
   .chip {
     display: inline-block;
     padding: 2px 8px;
@@ -461,6 +463,9 @@
       var docket = el("div", "docket");
       docket.appendChild(el("span", "id", c.id));
       docket.appendChild(el("span", "chip", c.claim_type));
+      var now = el("span", "chip", "현재: " + (c.status || "?"));
+      if (c.status && c.status !== "unverified") now.dataset.settled = "yes";
+      docket.appendChild(now);
       docket.appendChild(el("span", "chip", "제안: " + (c.proposed_status || "없음")));
       if (c.speaker) docket.appendChild(el("span", "chip", c.speaker));
       docket.appendChild(el("span", "spacer"));

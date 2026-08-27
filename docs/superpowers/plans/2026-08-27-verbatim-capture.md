@@ -15,9 +15,12 @@ Spec: `../specs/2026-08-27-verbatim-capture-design.md`
 
 ## 코드 반영 후 (vault 작업, MCP 서버 재시작 필요)
 
-- [ ] source 4개 Raw 본문을 원본(커밋 c8a24c8) 기준으로 재작성해 `update_source_raw`로 교체
-- [ ] `wiki lint`로 `quote_not_in_source`가 몇 건인지 확인
-- [ ] 남은 claim 인용문을 `update_claim_quote`로 교정, lint 0건 확인
+- [x] source 4개 Raw 본문을 `update_source_raw --content_path`로 원본(c8a24c8) 바이트와 동일하게 복구.
+      곱슬따옴표 18개와 단어 1건이 되돌아왔고, source-004는 svg 2개까지 그대로 담겼다
+- [x] 복구 직후 `wiki lint`가 `quote_not_in_source` 6건을 보고했다. 처음 원본 대조로 찾은 것과 같은 6건이다
+- [x] 그 6건을 `update_claim_quote`로 교정해 lint 0건.
+      추가로 인용 범위가 좁던 9건(009 010 022 051 054 064 070 071 072)을 넓혀
+      `render_review.py`의 기계 표시가 7건에서 0건이 됐다
 
 ## 검토표
 
@@ -33,3 +36,11 @@ Spec: `../specs/2026-08-27-verbatim-capture-design.md`
 - [x] `core/pipeline.py`가 `pending` 폴더 파일 수가 아니라 `status: unverified`를 센다.
       키 이름도 `pending_claims` -> `unverified_claims`로 바꿨다. 2026-08-28에 claim 72건을
       검토해 전부 승격했는데도 안내가 "pending claim 53개가 검토를 기다린다"를 계속 보고했다.
+
+## 검토 결과 (2026-08-28)
+
+- [x] claim 72건을 인용문과 하나씩 대조. 71건은 제안한 상태로 승격, 1건(`claim-20260827-051`)은
+      원문의 조건("when the buffered token IDs differ...")을 떨어뜨려 `partially_true`로 뒀다.
+- [x] `render_review.py`의 숫자 대조가 영어 숫자 단어를 읽는다 ("ten times" -> 10).
+      안 그러면 멀쩡한 claim에 표시가 붙고, 표시가 흔해지면 통째로 무시된다.
+- [x] 검토표에 현재 status를 표시한다.
