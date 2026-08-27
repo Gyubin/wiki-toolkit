@@ -27,3 +27,9 @@ Spec: `../specs/2026-08-27-verbatim-capture-design.md`
       숫자, attributed 제안인데 speaker 없음). 사람이나 모델이 claim 문장을 다시 옮겨 적는
       단계가 없다.
 - [x] 2026-08-27 실제 vault 4개 source에 돌려 72건 중 7건에 숫자 표시가 붙는 것을 확인
+
+## 안내 숫자
+
+- [x] `core/pipeline.py`가 `pending` 폴더 파일 수가 아니라 `status: unverified`를 센다.
+      키 이름도 `pending_claims` -> `unverified_claims`로 바꿨다. 2026-08-28에 claim 72건을
+      검토해 전부 승격했는데도 안내가 "pending claim 53개가 검토를 기다린다"를 계속 보고했다.

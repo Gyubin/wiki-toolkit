@@ -47,7 +47,9 @@ violation fails the test, not a code review.
 - `core/projects.py` — `01_Projects/<repo>/` session summaries and ADRs.
 - `core/lint.py` — deterministic, report-only vault hygiene checks.
 - `core/pipeline.py` — `vault_state`/`next_step`: 파이프라인에서 사람을 기다리는 지점 하나를 계산.
-  ingest 대기 > pending claim > wiki page 미승격 verified > 복습 도래 순으로 하나만 돌려준다.
+  ingest 대기 > `status: unverified` claim > wiki page 미승격 verified > 복습 도래 순으로 하나만
+  돌려준다. claim은 폴더가 아니라 status로 센다 (`accepted_for_now`와 `partially_true`도
+  `pending/`에 살기 때문에 폴더를 세면 검토가 끝난 뒤에도 계속 남았다고 보고한다).
 - `core/search.py` — hybrid BM25(한글 2-gram) + embedding search, RRF fusion. 임베딩은 기본이 OpenAI
   Embeddings API(`text-embedding-3-large`)이고, `WIKI_EMBED_PROVIDER=local`이면 fastembed로 로컬 실행(e5 접두사);
   injectable embedder; 벡터 디스크 캐시 + vault 지문 기반 인덱스 무효화.

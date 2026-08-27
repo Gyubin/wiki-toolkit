@@ -296,7 +296,7 @@ def build_wiki_tools(vault: Path) -> list:
         return _ok("\n".join([
             hint, "",
             f"ingest 대기 클립: {len(s['unstructured_inbox'])}",
-            f"pending claim: {len(s['pending_claims'])}",
+            f"아직 검토 안 한 claim: {len(s['unverified_claims'])}",
             f"verified claim: {len(s['verified_claims'])} "
             f"(그중 wiki page에 안 실림: {len(s['verified_unlinked'])})",
             f"wiki page: {len(s['wiki_pages'])}",

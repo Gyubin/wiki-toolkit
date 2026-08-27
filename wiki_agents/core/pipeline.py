@@ -13,7 +13,7 @@ from .. import schema
 
 # 사람의 행동을 기다리는 단계들을 앞선 것부터. 앞 단계가 밀려 있으면 뒤는 말하지 않는다.
 _INBOX = "00_Inbox"
-_PENDING = "10_Claims/pending"
+_CLAIMS = "10_Claims"
 _VERIFIED = "10_Claims/verified"
 _WIKI = "03_Resources"
 _LEARNING = "30_Learning"
@@ -36,6 +36,25 @@ def _unstructured_inbox(vault: Path) -> list[str]:
     return sorted(out)
 
 
+def _unverified_claims(vault: Path) -> list[str]:
+    """`status: unverified`인 claim. 폴더가 아니라 status를 센다.
+
+    예전에는 `10_Claims/pending` 폴더의 파일 수를 셌다. 그런데 `accepted_for_now`와
+    `partially_true`도 그 폴더에 산다(`claims._STATUS_DIR`). 그래서 2026-08-28에 claim
+    72건을 검토해 전부 승격한 뒤에도 안내가 "pending claim 53개가 검토를 기다린다"를
+    계속 보고했다. 방금 끝낸 일을 남았다고 말하는 안내는 곧 통째로 무시된다.
+    """
+    out = []
+    for p in (Path(vault) / _CLAIMS).rglob("claim-*.md"):
+        try:
+            meta, _ = schema.parse_doc(p.read_text(encoding="utf-8"))
+        except Exception:  # noqa: S112 - 깨진 파일은 lint의 몫
+            continue
+        if meta.get("status") == "unverified":
+            out.append(p.stem)
+    return sorted(out)
+
+
 def _referenced_claims(vault: Path) -> set[str]:
     """어떤 wiki page의 claim_refs에든 등장하는 claim id."""
     refs: set[str] = set()
@@ -49,13 +68,13 @@ def _referenced_claims(vault: Path) -> set[str]:
 
 
 def vault_state(vault: Path, today_str: str) -> dict:
-    """각 대기 지점의 개수. 파일명(=id)만 보므로 claim 본문은 파싱하지 않는다."""
+    """각 대기 지점의 목록. 값은 파일 경로가 아니라 id(=파일 stem)다."""
     vault = Path(vault)
     verified = _stems(vault, _VERIFIED, "claim-*.md")
     from . import learning  # 지연 import: core 내부 순환 방지
     return {
         "unstructured_inbox": _unstructured_inbox(vault),
-        "pending_claims": sorted(_stems(vault, _PENDING, "claim-*.md")),
+        "unverified_claims": _unverified_claims(vault),
         "verified_unlinked": sorted(verified - _referenced_claims(vault)),
         "verified_claims": sorted(verified),
         "wiki_pages": sorted(p.stem for p in (vault / _WIKI).rglob("*.md")),
@@ -73,9 +92,9 @@ def next_step(vault: Path, today_str: str) -> str | None:
     if s["unstructured_inbox"]:
         n = len(s["unstructured_inbox"])
         return f"다음: 00_Inbox에 아직 ingest 안 된 클립 {n}개가 있다 (인제스트해줘)"
-    if s["pending_claims"]:
-        n = len(s["pending_claims"])
-        return (f"다음: pending claim {n}개가 검토를 기다린다 "
+    if s["unverified_claims"]:
+        n = len(s["unverified_claims"])
+        return (f"다음: 아직 검토 안 한 claim {n}개가 있다 "
                 f"(promote_claim으로 승격: verified는 evidence_refs 필수, "
                 f"확신이 없으면 attributed/opinion/accepted_for_now)")
     if s["verified_unlinked"]:

@@ -55,7 +55,7 @@ def test_write_tools_append_the_next_step(vault):
         "claim": "주장", "claim_type": "technical_fact", "source_refs": ["s"]}))
     text = out["content"][0]["text"]
     assert "created" in text
-    assert "pending claim 1개" in text
+    assert "검토 안 한 claim 1개" in text
 
 
 def test_list_pending_appends_the_next_step(vault):
@@ -65,7 +65,7 @@ def test_list_pending_appends_the_next_step(vault):
     asyncio.run(h["create_claim"]({
         "claim": "주장", "claim_type": "technical_fact", "source_refs": ["s"]}))
     text = asyncio.run(h["list_pending"]({}))["content"][0]["text"]
-    assert "pending claim 1개" in text
+    assert "검토 안 한 claim 1개" in text
 
 
 def test_next_step_advances_after_verification(vault):
@@ -87,7 +87,7 @@ def test_vault_next_step_tool_reports_counts(vault):
     h = _handlers(vault)
     text = asyncio.run(h["vault_next_step"]({}))["content"][0]["text"]
     assert "대기 중인 단계 없음" in text
-    assert "pending claim: 0" in text
+    assert "아직 검토 안 한 claim: 0" in text
 
 
 async def test_write_tool_survives_a_broken_file_elsewhere_in_the_vault(vault):
