@@ -69,6 +69,8 @@ violation fails the test, not a code review.
 
 - `ingest.md`: 클립 하나를 triage하고 claim으로 쪼개는 계약. 이게 계약의 원본이다.
 - `verify.md`: pending claim 검토. `verified`는 `evidence_refs` 필수.
+- `wiki-page.md`: 페이지 본문의 형식과 문체. 설계 문서 §3.5의 권장 섹션을 그대로 따르지
+  않는 이유가 여기 있다 (그 이름들이 전부 vault 운영 용어라 콘텐츠를 가린다).
 - `answer.md` / `learning.md` / `wrap.md` / `lint.md`: 각 작업 절차.
 - `system.md`: 원칙 모음. vault 작업 전에 읽는다.
 
