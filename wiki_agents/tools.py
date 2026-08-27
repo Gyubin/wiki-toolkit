@@ -109,13 +109,17 @@ def build_wiki_tools(vault: Path) -> list:
     @tool("create_source",
           "Capture a raw clip as a source in the Inbox. Pass content_path (a file) "
           "instead of content for anything long: retyping a clip into the argument is "
-          "where verbatim capture silently drifts.",
+          "where verbatim capture silently drifts. Pass title with a short human-readable "
+          "name: it becomes the filename, which is what Obsidian shows in the graph and "
+          "the file explorer. The id still lives in frontmatter.",
           _schema({"origin": _STR},
-                  {"content": _STR, "content_path": _STR, "sensitivity": _STR, "url": _STR}))
+                  {"content": _STR, "content_path": _STR, "sensitivity": _STR,
+                   "url": _STR, "title": _STR}))
     async def create_source(args):
         p = sources.create_source(
             vault, origin=args["origin"], content=resolve_content(args),
             sensitivity=args.get("sensitivity", "personal"),
+            title=args.get("title"),
             date_str=schema.today_str(),
             seq=ids.next_seq(vault, "source", schema.today_str(), ["00_Inbox"]),
             url=args.get("url"),

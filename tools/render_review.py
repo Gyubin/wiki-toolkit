@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from wiki_agents import schema  # noqa: E402
 from wiki_agents.core import claims as claims_core  # noqa: E402
+from wiki_agents.core import sources  # noqa: E402
 
 TEMPLATE = Path(__file__).with_name("review_template.html")
 
@@ -56,9 +57,12 @@ def norm_numbers(s: str) -> str:
 
 
 def read_source(vault: Path, source_id: str) -> tuple[dict, str]:
-    for p in (vault / "00_Inbox").rglob(f"{source_id}.md"):
-        return schema.parse_doc(p.read_text(encoding="utf-8"))
-    raise SystemExit(f"source를 찾을 수 없습니다: {source_id}")
+    """core의 find_source를 쓴다. 파일명이 제목으로 바뀌어도 id로 찾아준다."""
+    try:
+        p = sources.find_source(vault, source_id)
+    except FileNotFoundError:
+        raise SystemExit(f"source를 찾을 수 없습니다: {source_id}") from None
+    return schema.parse_doc(p.read_text(encoding="utf-8"))
 
 
 def clip_title(raw_body: str) -> str:

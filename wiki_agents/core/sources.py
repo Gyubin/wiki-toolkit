@@ -1,6 +1,7 @@
 """Raw capture (sources), triage records, and URL/html conversion."""
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from markdownify import markdownify
@@ -28,9 +29,28 @@ def botwall_marker(content: str) -> str | None:
     return None
 
 
+# 파일 시스템이 못 받거나 경로를 갈라놓는 문자들. 제목을 파일명으로 쓰려면 먼저 걷어낸다.
+_UNSAFE_IN_NAME = re.compile(r'[/\\:*?"<>|\x00-\x1f]')
+
+
+def source_filename(source_id: str, title: str | None) -> str:
+    """사람이 읽을 파일명. 제목이 없거나 다 걷어내고 남는 게 없으면 id로 돌아간다.
+
+    파일명은 사람이 읽고 id는 frontmatter가 든다. Obsidian의 그래프 뷰와 파일 탐색기,
+    빠른 전환은 전부 파일명을 보여주기 때문에, source-20260827-004 같은 이름이면
+    무엇에 대한 글인지 열어봐야 안다.
+    """
+    if not title:
+        return f"{source_id}.md"
+    clean = _UNSAFE_IN_NAME.sub(" ", title)
+    clean = " ".join(clean.split()).strip(". ")[:120]
+    return f"{clean}.md" if clean else f"{source_id}.md"
+
+
 def create_source(
     vault: Path, *, origin: str, content: str, sensitivity: str = "personal",
     date_str: str, seq: int, url: str | None = None, subdir: str = "raw",
+    title: str | None = None,
 ) -> Path:
     if sensitivity not in schema.SENSITIVITIES:
         raise ValueError(f"unknown sensitivity: {sensitivity}")
@@ -48,18 +68,32 @@ def create_source(
         "captured_at": date_str, "sensitivity": sensitivity, "url": url or "",
     }
     body = f"## Raw\n\n{content}\n"
-    path = Path(vault) / "00_Inbox" / subdir / f"{sid}.md"
+    path = Path(vault) / "00_Inbox" / subdir / source_filename(sid, title)
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
-        raise FileExistsError(f"{sid} already exists; pick a fresh seq")
+        raise FileExistsError(
+            f"{path.name} already exists; pick a different title (or a fresh seq)")
     path.write_text(schema.render_doc(meta, body), encoding="utf-8")
     index.append_log(vault, "ingest-log", f"captured {sid} from {origin} [{sensitivity}]")
     return path
 
 
 def find_source(vault: Path, source_id: str) -> Path:
-    for p in (Path(vault) / "00_Inbox").rglob(f"{source_id}.md"):
+    """파일명이 id인 경우를 먼저 보고, 없으면 frontmatter의 `id`로 찾는다.
+
+    source 파일명은 사람이 읽을 제목으로 바뀔 수 있다 (그래야 Obsidian 그래프와 파일
+    탐색기에서 읽힌다). 파일명으로만 찾으면 그 순간 update_source_raw가 파일을 못 찾는다.
+    """
+    base = Path(vault) / "00_Inbox"
+    for p in base.rglob(f"{source_id}.md"):
         return p
+    for p in base.rglob("*.md"):
+        try:
+            meta, _ = schema.parse_doc(p.read_text(encoding="utf-8"))
+        except Exception:  # noqa: S112 - 깨진 파일은 lint의 몫
+            continue
+        if meta.get("id") == source_id:
+            return p
     raise FileNotFoundError(source_id)
 
 

@@ -126,3 +126,56 @@ def test_update_source_raw_rejects_botwall_replacement(vault):
             vault, "source-20260827-001",
             content="JavaScript is not available." + "x" * 300,
             reason="재캡처")
+
+
+def test_find_source_resolves_a_renamed_file_by_frontmatter_id(vault):
+    """파일명이 제목으로 바뀌어도 id로 찾을 수 있어야 update_source_raw가 돈다."""
+    sources.create_source(vault, origin="browser", content="옛 본문" * 100,
+                          date_str="2026-08-27", seq=1, url="http://x")
+    raw = vault / "00_Inbox/raw"
+    (raw / "source-20260827-001.md").rename(raw / "Expert Parallel Deployment 이해하기.md")
+    found = sources.find_source(vault, "source-20260827-001")
+    assert found.name == "Expert Parallel Deployment 이해하기.md"
+    sources.update_source_raw(vault, "source-20260827-001", content="새 본문" * 100,
+                              reason="이름 바뀐 파일에도 써져야 한다")
+    assert "새 본문" in found.read_text(encoding="utf-8")
+
+
+def test_create_source_uses_the_title_as_the_filename(vault):
+    """파일명은 사람이 읽고 id는 frontmatter가 든다.
+
+    이걸 안 하면 다음 ingest부터 다시 source-YYYYMMDD-NNN.md가 생겨서 그래프와 파일
+    탐색기가 도로 안 읽히는 상태가 된다.
+    """
+    p = sources.create_source(
+        vault, origin="browser", content="본문" * 200, date_str="2026-08-28", seq=1,
+        url="http://x", title="Expert Parallel Deployment 이해하기",
+    )
+    assert p.name == "Expert Parallel Deployment 이해하기.md"
+    meta, _ = schema.parse_doc(p.read_text(encoding="utf-8"))
+    assert meta["id"] == "source-20260828-001"
+
+
+def test_create_source_falls_back_to_the_id_without_a_title(vault):
+    p = sources.create_source(vault, origin="browser", content="본문" * 200,
+                              date_str="2026-08-28", seq=2)
+    assert p.name == "source-20260828-002.md"
+
+
+def test_create_source_sanitizes_a_title_that_cannot_be_a_filename(vault):
+    """제목에 / 나 : 가 들어오면 파일을 못 만들거나 엉뚱한 디렉터리에 쓴다."""
+    p = sources.create_source(
+        vault, origin="browser", content="본문" * 200, date_str="2026-08-28", seq=3,
+        title="Quantization: What INT8/INT4 Really Do\n",
+    )
+    assert "/" not in p.name and ":" not in p.name
+    assert p.name.endswith(".md") and p.parent.name == "raw"
+
+
+def test_create_source_rejects_a_title_already_taken(vault):
+    import pytest
+    sources.create_source(vault, origin="browser", content="본문" * 200,
+                          date_str="2026-08-28", seq=1, title="같은 제목")
+    with pytest.raises(FileExistsError, match="같은 제목"):
+        sources.create_source(vault, origin="browser", content="다른 본문" * 200,
+                              date_str="2026-08-28", seq=2, title="같은 제목")

@@ -9,6 +9,13 @@ quiet. It surfaced only by diffing against the original clip bytes, which had be
 before ingest. Keep the clip in git until ingest is done, so that comparison stays possible.
 Pass `content` only for text you are composing yourself, such as a short pasted note.
 
+Also pass `title`: a short human-readable name for the piece, which becomes the filename.
+Obsidian's graph view, file explorer, and quick switcher all show the filename, so a vault full
+of `source-20260827-004.md` cannot be read without opening every file. The id stays in
+frontmatter and is what every reference uses. Clean the clipper's `title` up first if it is
+mangled: one clip arrived as `1The overall framework of Agent Lightning v1.0.` and the right
+filename was `Agent Lightning v1.0`.
+
 Then triage (drop|keep-as-link|deep);
 for `deep`, extract atomic claims; classify each claim_type; check find_similar_claim for duplicates;
 create each claim with create_claim, always passing source_refs with the source id (it is always
