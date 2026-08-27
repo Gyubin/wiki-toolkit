@@ -168,3 +168,59 @@ def test_quote_survives_a_status_change(vault):
     moved = claims.promote_claim(vault, cid, target_status="attributed",
                                  date_str="2026-06-08")
     assert "> the original wording" in moved.read_text(encoding="utf-8")
+
+
+def test_update_claim_quote_replaces_only_the_quote(vault):
+    """claim 문장과 status는 그대로 두고 ## 원문만 바꾼다."""
+    claims.create_claim(vault, claim="주장 문장", claim_type="technical_fact",
+                        source_refs=["source-20260827-001"], date_str="2026-08-27", seq=1,
+                        quote="원문 뻔했음")
+    p = claims.update_claim_quote(
+        vault, "claim-20260827-001", quote="원문 뻔함",
+        reason="원본 대조 결과 단어를 바꿔 적었다", date_str="2026-08-28")
+    meta, body = schema.parse_doc(p.read_text(encoding="utf-8"))
+    assert meta["claim"] == "주장 문장"
+    assert meta["status"] == "unverified"
+    assert meta["updated"] == "2026-08-28"
+    assert "> 원문 뻔함" in body
+    assert "뻔했음" not in body
+    assert "## Claim\n\n주장 문장" in body
+
+
+def test_update_claim_quote_adds_one_when_absent(vault):
+    claims.create_claim(vault, claim="인용 없던 주장", claim_type="opinion",
+                        source_refs=["s"], date_str="2026-08-27", seq=1)
+    p = claims.update_claim_quote(vault, "claim-20260827-001", quote="뒤늦게 붙인 원문",
+                                  reason="원문을 찾았다", date_str="2026-08-27")
+    body = p.read_text(encoding="utf-8")
+    assert "## 원문" in body
+    assert "> 뒤늦게 붙인 원문" in body
+
+
+def test_update_claim_quote_keeps_a_promoted_claim_where_it_is(vault):
+    """인용문 수정이 status를 되돌리거나 파일을 옮기면 안 된다."""
+    claims.create_claim(vault, claim="승격된 주장", claim_type="person_claim",
+                        source_refs=["s"], date_str="2026-08-27", seq=1, quote="old")
+    claims.promote_claim(vault, "claim-20260827-001", target_status="attributed",
+                         date_str="2026-08-27")
+    p = claims.update_claim_quote(vault, "claim-20260827-001", quote="new",
+                                  reason="원본 대조", date_str="2026-08-27")
+    assert p.parent.name == "attributed"
+    meta, _ = schema.parse_doc(p.read_text(encoding="utf-8"))
+    assert meta["status"] == "attributed"
+
+
+def test_update_claim_quote_requires_reason_and_content(vault):
+    claims.create_claim(vault, claim="주장", claim_type="opinion", source_refs=["s"],
+                        date_str="2026-08-27", seq=1, quote="q")
+    with pytest.raises(ValueError, match="reason"):
+        claims.update_claim_quote(vault, "claim-20260827-001", quote="새 인용",
+                                  reason="", date_str="2026-08-27")
+    with pytest.raises(ValueError, match="quote"):
+        claims.update_claim_quote(vault, "claim-20260827-001", quote="  ",
+                                  reason="이유는 있다", date_str="2026-08-27")
+
+
+def test_unblockquote_is_the_inverse_of_blockquote():
+    text = "첫 줄\n\n셋째 줄"
+    assert claims.unblockquote(claims.blockquote(text)) == text

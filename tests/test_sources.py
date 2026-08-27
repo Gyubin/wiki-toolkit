@@ -67,3 +67,62 @@ def test_create_source_allows_short_pasted_note(vault):
         date_str="2026-06-07", seq=8, url="http://x",
     )
     assert path.exists()
+
+
+def test_update_source_raw_replaces_body_and_keeps_frontmatter(vault):
+    """Raw 본문만 갈아끼운다. id/url/captured_at은 그대로여야 한다."""
+    p = sources.create_source(
+        vault, origin="browser", content="원문 A" * 50,
+        date_str="2026-08-27", seq=1, url="http://x",
+    )
+    sources.update_source_raw(
+        vault, "source-20260827-001", content="원문 B" * 50,
+        reason="원본 대조 결과 곱슬따옴표를 잘못 옮겨 적었다",
+    )
+    meta, body = schema.parse_doc(p.read_text(encoding="utf-8"))
+    assert meta["id"] == "source-20260827-001"
+    assert meta["url"] == "http://x"
+    assert meta["captured_at"] == "2026-08-27"
+    assert meta["origin"] == "browser"
+    assert "원문 B" in body
+    assert "원문 A" not in body
+    log = (vault / "06_Metadata/logs/ingest-log.md").read_text(encoding="utf-8")
+    assert "곱슬따옴표를 잘못 옮겨 적었다" in log
+
+
+def test_update_source_raw_requires_a_reason(vault):
+    """캡처를 사후에 바꾸는 일이라 왜가 없으면 나중에 이 vault를 믿을 수 없다."""
+    import pytest
+    sources.create_source(vault, origin="browser", content="A" * 300,
+                          date_str="2026-08-27", seq=1)
+    with pytest.raises(ValueError, match="reason"):
+        sources.update_source_raw(vault, "source-20260827-001", content="B" * 300,
+                                  reason="   ")
+
+
+def test_update_source_raw_rejects_a_noop(vault):
+    import pytest
+    sources.create_source(vault, origin="browser", content="A" * 300,
+                          date_str="2026-08-27", seq=1)
+    with pytest.raises(ValueError, match="unchanged"):
+        sources.update_source_raw(vault, "source-20260827-001", content="A" * 300,
+                                  reason="바꿀 게 없다")
+
+
+def test_update_source_raw_rejects_unknown_id(vault):
+    import pytest
+    with pytest.raises(FileNotFoundError):
+        sources.update_source_raw(vault, "source-20990101-001", content="B" * 300,
+                                  reason="없는 id")
+
+
+def test_update_source_raw_rejects_botwall_replacement(vault):
+    """되돌린다면서 봇월 페이지를 밀어넣는 것도 막는다."""
+    import pytest
+    sources.create_source(vault, origin="browser", content="A" * 300,
+                          date_str="2026-08-27", seq=1)
+    with pytest.raises(ValueError, match="bot-wall"):
+        sources.update_source_raw(
+            vault, "source-20260827-001",
+            content="JavaScript is not available." + "x" * 300,
+            reason="재캡처")

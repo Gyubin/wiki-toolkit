@@ -57,6 +57,45 @@ def create_source(
     return path
 
 
+def find_source(vault: Path, source_id: str) -> Path:
+    for p in (Path(vault) / "00_Inbox").rglob(f"{source_id}.md"):
+        return p
+    raise FileNotFoundError(source_id)
+
+
+def update_source_raw(vault: Path, source_id: str, *, content: str, reason: str) -> Path:
+    """`## Raw` 본문만 교체한다. frontmatter는 건드리지 않는다.
+
+    Raw 본문은 캡처 원본과 같아야 하는데, 모델이 원문을 도구 인자로 다시 타이핑하는
+    과정에서 조용히 뒤틀린다. 2026-08-27에 클립 4개(119KB)를 인제스트하면서 곱슬따옴표
+    18개를 곧은 따옴표로 바꿔 적었고, 한 곳은 단어를 바꿨다("푸시할 뻔함" ->
+    "푸시할 뻔했음"). 원본 바이트가 남아 있으면 이 함수로 되돌린다.
+
+    `reason`이 필수인 이유: 캡처를 사후에 바꾸는 일이라 로그에 왜가 없으면 나중에
+    이 vault를 믿을 수 없다. 되돌린 것인지 덮어쓴 것인지 구별이 안 된다.
+    """
+    if not reason.strip():
+        raise ValueError(
+            "update_source_raw needs a reason (why this capture is being rewritten)")
+    if not content.strip():
+        raise ValueError("refusing to blank a source body")
+    marker = botwall_marker(content)
+    if marker is not None:
+        raise ValueError(
+            f"replacement looks like a bot-wall page (found {marker!r}); not saved.")
+    path = find_source(vault, source_id)
+    meta, body = schema.parse_doc(path.read_text(encoding="utf-8"))
+    new_body = f"## Raw\n\n{content}\n"
+    if new_body == body:
+        raise ValueError(f"{source_id} raw body is unchanged; nothing to write")
+    path.write_text(schema.render_doc(meta, new_body), encoding="utf-8")
+    index.append_log(
+        vault, "ingest-log",
+        f"raw body rewritten for {source_id}: {len(body)} -> {len(new_body)} chars "
+        f"({reason.strip()})")
+    return path
+
+
 def triage_record(vault: Path, source_id: str, decision: str, date_str: str) -> None:
     if decision not in ("drop", "keep-as-link", "deep"):
         raise ValueError(f"unknown triage decision: {decision}")

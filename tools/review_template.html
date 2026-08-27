@@ -1,0 +1,589 @@
+<title>__TITLE__</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap">
+
+<style>
+  :root {
+    --paper:      #f7f8fa;
+    --slip:       #ffffff;
+    --ink:        #16191f;
+    --ink-soft:   #5b6270;
+    --ink-faint:  #8b93a1;
+    --rule:       #dfe3ea;
+    --rule-firm:  #c3cad6;
+    --pencil:     #a8322d;
+    --pencil-bg:  #fbf0ef;
+    --settled:    #1f6350;
+    --settled-bg: #eaf3f0;
+    --shadow:     0 1px 2px rgba(22, 25, 31, .05), 0 8px 24px -16px rgba(22, 25, 31, .25);
+
+    --sans: "IBM Plex Sans KR", system-ui, -apple-system, "Apple SD Gothic Neo", sans-serif;
+    --serif: "Newsreader", "Apple SD Gothic Neo", Georgia, serif;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:      #12161c;
+      --slip:       #191e26;
+      --ink:        #e8ebf0;
+      --ink-soft:   #a3abba;
+      --ink-faint:  #6f7889;
+      --rule:       #2a313c;
+      --rule-firm:  #3d4653;
+      --pencil:     #e8817b;
+      --pencil-bg:  #2c1e1e;
+      --settled:    #6fc4aa;
+      --settled-bg: #172a26;
+      --shadow:     0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -16px rgba(0, 0, 0, .8);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:      #12161c;
+    --slip:       #191e26;
+    --ink:        #e8ebf0;
+    --ink-soft:   #a3abba;
+    --ink-faint:  #6f7889;
+    --rule:       #2a313c;
+    --rule-firm:  #3d4653;
+    --pencil:     #e8817b;
+    --pencil-bg:  #2c1e1e;
+    --settled:    #6fc4aa;
+    --settled-bg: #172a26;
+    --shadow:     0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -16px rgba(0, 0, 0, .8);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px 96px; }
+
+  /* ---------- 머리말 ---------- */
+
+  .masthead { padding: 56px 0 28px; border-bottom: 2px solid var(--ink); }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 14px;
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: clamp(30px, 4.6vw, 46px);
+    line-height: 1.12;
+    letter-spacing: -.015em;
+    margin: 0 0 18px;
+    text-wrap: balance;
+  }
+
+  .standfirst {
+    max-width: 62ch;
+    color: var(--ink-soft);
+    margin: 0 0 26px;
+  }
+
+  .standfirst a { color: inherit; text-decoration-color: var(--rule-firm); }
+  .standfirst a:hover { color: var(--pencil); }
+
+  .facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 28px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .facts b { color: var(--ink-faint); font-weight: 400; }
+
+  /* ---------- 진행 막대 ---------- */
+
+  .tally {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--paper);
+    border-bottom: 1px solid var(--rule);
+    padding: 12px 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px 20px;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+
+  .meter {
+    flex: 1 1 200px;
+    height: 4px;
+    min-width: 140px;
+    background: var(--rule);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .meter i { display: block; height: 100%; width: 0; background: var(--settled); transition: width .25s ease; }
+
+  .tally output { font-variant-numeric: tabular-nums; color: var(--ink-soft); }
+
+  button {
+    font: inherit;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink);
+    background: var(--slip);
+    border: 1px solid var(--rule-firm);
+    border-radius: 3px;
+    padding: 6px 12px;
+    cursor: pointer;
+  }
+
+  button:hover { border-color: var(--ink-soft); }
+  button:focus-visible { outline: 2px solid var(--pencil); outline-offset: 2px; }
+
+  /* ---------- 전표 ---------- */
+
+  .slip {
+    background: var(--slip);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    box-shadow: var(--shadow);
+    margin: 22px 0;
+    overflow: hidden;
+  }
+
+  .slip[data-settled="yes"] { border-color: var(--settled); }
+
+  .docket {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px 16px;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--rule);
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-faint);
+  }
+
+  .docket .id { color: var(--ink); font-weight: 500; }
+  .docket .spacer { flex: 1 1 auto; }
+
+  .chip[data-settled="yes"] { border-color: var(--settled); color: var(--settled); }
+
+  .chip {
+    display: inline-block;
+    padding: 2px 8px;
+    border: 1px solid var(--rule-firm);
+    border-radius: 999px;
+    font-size: 11px;
+    letter-spacing: .02em;
+    color: var(--ink-soft);
+    white-space: nowrap;
+  }
+
+  .compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+  }
+
+  @media (max-width: 800px) {
+    .compare { grid-template-columns: 1fr; }
+  }
+
+  .side { padding: 20px; }
+  .side + .side { border-left: 1px solid var(--rule); }
+
+  @media (max-width: 800px) {
+    .side + .side { border-left: 0; border-top: 1px solid var(--rule); }
+  }
+
+  .side h2 {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 400;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 12px;
+  }
+
+  .mine { font-size: 15.5px; margin: 0; }
+
+  .theirs {
+    font-family: var(--serif);
+    font-size: 15.5px;
+    line-height: 1.6;
+    margin: 0;
+    color: var(--ink-soft);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .theirs.absent { font-family: var(--sans); font-style: italic; color: var(--pencil); }
+
+  /* ---------- 기계가 붙인 표시 ---------- */
+
+  .marks { margin: 0; padding: 0 20px 4px; list-style: none; }
+
+  .marks li {
+    border-left: 2px solid var(--pencil);
+    background: var(--pencil-bg);
+    color: var(--ink);
+    padding: 8px 12px;
+    margin: 0 0 8px;
+    font-size: 13px;
+    border-radius: 0 3px 3px 0;
+  }
+
+  .marks code {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: transparent;
+    color: var(--pencil);
+  }
+
+  /* ---------- 판정 ---------- */
+
+  .verdict {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 20px;
+    border-top: 1px dashed var(--rule-firm);
+  }
+
+  .verdict legend { display: none; }
+
+  .verdict label { cursor: pointer; user-select: none; }
+  .verdict input { position: absolute; opacity: 0; pointer-events: none; }
+  .verdict label:hover span { border-color: var(--ink-soft); }
+
+  .verdict input:checked + span {
+    background: var(--settled-bg);
+    border-color: var(--settled);
+    color: var(--settled);
+  }
+
+  .verdict input:focus-visible + span { outline: 2px solid var(--pencil); outline-offset: 2px; }
+
+  .verdict label span {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 12px;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 5px 11px;
+    color: var(--ink-soft);
+  }
+
+  .evidence {
+    width: 100%;
+    margin-top: 4px;
+    font-family: var(--sans);
+    font-size: 13px;
+    color: var(--ink);
+    background: var(--paper);
+    border: 1px solid var(--rule-firm);
+    border-radius: 3px;
+    padding: 9px 11px;
+  }
+
+  .evidence:focus-visible { outline: 2px solid var(--pencil); outline-offset: 1px; }
+  .evidence[hidden] { display: none; }
+
+  /* ---------- 내보내기 ---------- */
+
+  .export { margin-top: 44px; border-top: 2px solid var(--ink); padding-top: 24px; }
+
+  .export h2 {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: 24px;
+    margin: 0 0 8px;
+  }
+
+  .export p { color: var(--ink-soft); max-width: 62ch; margin: 0 0 16px; }
+
+  pre {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.7;
+    background: var(--slip);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 16px 18px;
+    margin: 0;
+    overflow-x: auto;
+    color: var(--ink);
+  }
+
+  footer {
+    margin-top: 40px;
+    padding-top: 18px;
+    border-top: 1px solid var(--rule);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-faint);
+    line-height: 1.8;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+
+<script type="application/json" id="review-data">__DATA__</script>
+
+<div class="wrap">
+  <header class="masthead">
+    <p class="eyebrow">Pending claim 검토</p>
+    <h1 id="hd"></h1>
+    <p class="standfirst" id="sf"></p>
+    <ul class="facts" id="facts"></ul>
+  </header>
+
+  <div class="tally">
+    <span class="meter"><i id="bar"></i></span>
+    <output id="count"></output>
+    <button type="button" id="reset">판정 지우기</button>
+  </div>
+
+  <main id="slips"></main>
+
+  <section class="export">
+    <h2>결정 내보내기</h2>
+    <p>판정한 것만 아래에 쌓입니다. 그대로 복사해서 채팅에 붙여주시면 제가 <code>promote_claim</code>으로 실행합니다. 판정하지 않은 claim은 <code>unverified</code>로 그대로 남습니다.</p>
+    <pre id="out"></pre>
+  </section>
+
+  <footer id="foot"></footer>
+</div>
+
+<script>
+  (function () {
+    "use strict";
+
+    var DATA = JSON.parse(document.getElementById("review-data").textContent);
+    var KEY = "wiki-review:" + DATA.source.id;
+
+    var CHOICES = [
+      { value: "",                 label: "보류" },
+      { value: "accepted_for_now", label: "accepted_for_now" },
+      { value: "attributed",       label: "attributed" },
+      { value: "opinion",          label: "opinion" },
+      { value: "partially_true",   label: "partially_true" },
+      { value: "rejected",         label: "rejected" },
+      { value: "verified",         label: "verified" }
+    ];
+
+    var state = load();
+
+    function load() {
+      try {
+        return JSON.parse(localStorage.getItem(KEY)) || {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function save() {
+      try {
+        localStorage.setItem(KEY, JSON.stringify(state));
+      } catch (e) {
+        /* 사생활 보호 모드 등에서 저장이 막혀도 페이지는 그대로 쓸 수 있어야 한다 */
+      }
+    }
+
+    function el(tag, cls, text) {
+      var n = document.createElement(tag);
+      if (cls) n.className = cls;
+      if (text !== undefined && text !== null) n.textContent = text;
+      return n;
+    }
+
+    /* ---------- 머리말 ---------- */
+
+    document.getElementById("hd").textContent = DATA.source.title;
+
+    var sf = document.getElementById("sf");
+    sf.appendChild(document.createTextNode(
+      "claim " + DATA.claims.length + "건이 " + DATA.source.id + " 에서 나왔습니다. " +
+      "왼쪽은 제가 다시 쓴 문장이고 오른쪽은 원문입니다. 둘이 어긋나면 왼쪽이 틀린 것입니다. "));
+    if (DATA.source.url) {
+      var a = el("a", null, "원문 열기");
+      a.href = DATA.source.url;
+      a.rel = "noopener noreferrer";
+      a.target = "_blank";
+      sf.appendChild(a);
+    }
+
+    var facts = document.getElementById("facts");
+    [
+      ["source", DATA.source.id],
+      ["captured", DATA.source.captured_at],
+      ["origin", DATA.source.origin],
+      ["표시된 claim", DATA.flagged + " / " + DATA.claims.length]
+    ].forEach(function (row) {
+      var li = el("li");
+      li.appendChild(el("b", null, row[0] + " "));
+      li.appendChild(document.createTextNode(row[1]));
+      facts.appendChild(li);
+    });
+
+    /* ---------- 전표 ---------- */
+
+    var slips = document.getElementById("slips");
+
+    DATA.claims.forEach(function (c) {
+      var slip = el("article", "slip");
+      slip.id = c.id;
+
+      var docket = el("div", "docket");
+      docket.appendChild(el("span", "id", c.id));
+      docket.appendChild(el("span", "chip", c.claim_type));
+      var now = el("span", "chip", "현재: " + (c.status || "?"));
+      if (c.status && c.status !== "unverified") now.dataset.settled = "yes";
+      docket.appendChild(now);
+      docket.appendChild(el("span", "chip", "제안: " + (c.proposed_status || "없음")));
+      if (c.speaker) docket.appendChild(el("span", "chip", c.speaker));
+      docket.appendChild(el("span", "spacer"));
+      slip.appendChild(docket);
+
+      var compare = el("div", "compare");
+
+      var left = el("div", "side");
+      left.appendChild(el("h2", null, "제가 다시 쓴 문장"));
+      left.appendChild(el("p", "mine", c.claim));
+      compare.appendChild(left);
+
+      var right = el("div", "side");
+      right.appendChild(el("h2", null, "원문"));
+      if (c.quote) {
+        right.appendChild(el("p", "theirs", c.quote));
+      } else {
+        right.appendChild(el("p", "theirs absent", "인용문이 없습니다. 원문을 열어 대조해야 합니다."));
+      }
+      compare.appendChild(right);
+      slip.appendChild(compare);
+
+      if (c.marks.length) {
+        var marks = el("ul", "marks");
+        c.marks.forEach(function (m) {
+          var li = el("li");
+          li.appendChild(document.createTextNode(m.text + " "));
+          if (m.detail) li.appendChild(el("code", null, m.detail));
+          marks.appendChild(li);
+        });
+        slip.appendChild(marks);
+      }
+
+      var verdict = el("fieldset", "verdict");
+      verdict.appendChild(el("legend", null, c.id + " 판정"));
+
+      CHOICES.forEach(function (ch) {
+        var label = el("label");
+        var input = document.createElement("input");
+        input.type = "radio";
+        input.name = c.id;
+        input.value = ch.value;
+        input.checked = (state[c.id] || { status: "" }).status === ch.value;
+        label.appendChild(input);
+        label.appendChild(el("span", null, ch.label));
+        input.addEventListener("change", function () {
+          var prev = state[c.id] || {};
+          state[c.id] = { status: ch.value, evidence: prev.evidence || "" };
+          save();
+          sync(slip, c);
+        });
+        verdict.appendChild(label);
+      });
+
+      var ev = document.createElement("input");
+      ev.className = "evidence";
+      ev.type = "text";
+      ev.placeholder = "verified로 올리려면 근거를 문장으로 적어주세요 (예: 2026-08-27 본인 확인: 원문 3문단과 대조)";
+      ev.value = (state[c.id] || {}).evidence || "";
+      ev.addEventListener("input", function () {
+        var prev = state[c.id] || { status: "" };
+        state[c.id] = { status: prev.status, evidence: ev.value };
+        save();
+        render();
+      });
+      verdict.appendChild(ev);
+      slip.appendChild(verdict);
+
+      slips.appendChild(slip);
+      sync(slip, c);
+    });
+
+    function sync(slip, c) {
+      var s = state[c.id] || { status: "" };
+      slip.dataset.settled = s.status ? "yes" : "no";
+      var ev = slip.querySelector(".evidence");
+      ev.hidden = s.status !== "verified";
+      render();
+    }
+
+    /* ---------- 집계와 내보내기 ---------- */
+
+    function render() {
+      var done = DATA.claims.filter(function (c) {
+        return (state[c.id] || {}).status;
+      });
+      document.getElementById("bar").style.width =
+        (DATA.claims.length ? (done.length / DATA.claims.length) * 100 : 0) + "%";
+      document.getElementById("count").textContent =
+        done.length + " / " + DATA.claims.length + " 판정함";
+
+      var lines = done.map(function (c) {
+        var s = state[c.id];
+        if (s.status === "verified") {
+          return "promote_claim " + c.id + " -> verified  evidence_refs: [\"" +
+            (s.evidence || "근거를 적어주세요").replace(/"/g, "'") + "\"]";
+        }
+        return "promote_claim " + c.id + " -> " + s.status;
+      });
+
+      document.getElementById("out").textContent = lines.length
+        ? lines.join("\n")
+        : "아직 판정한 claim이 없습니다.";
+    }
+
+    document.getElementById("reset").addEventListener("click", function () {
+      state = {};
+      save();
+      DATA.claims.forEach(function (c) {
+        var slip = document.getElementById(c.id);
+        slip.querySelector('input[value=""]').checked = true;
+        slip.querySelector(".evidence").value = "";
+        sync(slip, c);
+      });
+    });
+
+    document.getElementById("foot").textContent =
+      "생성: " + DATA.generated_at + " | " + DATA.generator +
+      " | 표시는 전부 기계가 붙인 것입니다. 제 판단은 들어 있지 않습니다.";
+  }());
+</script>
