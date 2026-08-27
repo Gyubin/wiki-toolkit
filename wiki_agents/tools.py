@@ -68,6 +68,19 @@ def resolve_content(args: dict) -> str:
     return text
 
 
+def resolve_optional_body(args: dict) -> str | None:
+    """`body` 또는 `body_path` 중 최대 하나. 둘 다 없으면 None (본문은 그대로 둔다)."""
+    text, path = args.get("body"), args.get("body_path")
+    if text is not None and path is not None:
+        raise ValueError("pass at most one of body or body_path")
+    if path is None:
+        return text
+    p = Path(path).expanduser()
+    if not p.is_file():
+        raise FileNotFoundError(f"body_path is not a file: {p}")
+    return p.read_text(encoding="utf-8")
+
+
 def resolve_wiki_page_path(vault: Path, rel: str) -> Path:
     """update_wiki_page 대상은 03_Resources 하위로만 한정한다.
 
@@ -215,13 +228,17 @@ def build_wiki_tools(vault: Path) -> list:
         )
         return _done(f"created {p.name}", ["03_Resources"])
 
-    @tool("update_wiki_page", "Update an existing wiki page (body, claim_refs, status)",
+    @tool("update_wiki_page",
+          "Update an existing wiki page (body, claim_refs, status). Pass body_path "
+          "instead of body to take the new body from a file: retyping a long page to "
+          "change one line is how wording silently drifts.",
           _schema({"path": _STR},
-                  {"body": _STR, "add_claim_refs": _STR_LIST, "status": _STR}))
+                  {"body": _STR, "body_path": _STR, "add_claim_refs": _STR_LIST,
+                   "status": _STR}))
     async def update_wiki_page(args):
         p = resolve_wiki_page_path(vault, args["path"])
         wiki.update_wiki_page(
-            p, body=args.get("body"),
+            p, body=resolve_optional_body(args),
             add_claim_refs=args.get("add_claim_refs"), status=args.get("status"),
         )
         return _done(f"updated {p.name}", ["03_Resources"])

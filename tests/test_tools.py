@@ -209,3 +209,35 @@ def test_declared_names_match_the_built_tools(vault):
     built = {t.name for t in tools.build_wiki_tools(vault)}
     declared = {n.removeprefix("mcp__wiki__") for n in tools.WIKI_TOOL_NAMES}
     assert built == declared
+
+
+async def test_update_wiki_page_reads_body_from_a_path(vault, tmp_path):
+    """페이지 본문도 파일에서 읽을 수 있어야 한다.
+
+    한 줄 고치려고 4KB짜리 본문을 도구 인자로 다시 타이핑하는 것이 2026-08-27 드리프트
+    사고의 원인이었다. source에는 content_path를 열어줬는데 페이지에는 없어서, 링크
+    8개를 바꾸는 데 7장을 통째로 다시 적어야 했다.
+    """
+    h = {t.name: t for t in tools.build_wiki_tools(vault)}
+    await h["create_wiki_page"].handler({
+        "name": "임베딩 모델", "page_type": "concept", "body": "옛 본문\n"})
+    new = tmp_path / "body.md"
+    new.write_text("고친 본문 harness’s\n", encoding="utf-8")
+    out = await h["update_wiki_page"].handler({
+        "path": "03_Resources/Concepts/임베딩-모델.md", "body_path": str(new)})
+    assert "updated" in out["content"][0]["text"]
+    text = (vault / "03_Resources/Concepts/임베딩-모델.md").read_text(encoding="utf-8")
+    assert "고친 본문 harness’s" in text
+    assert "옛 본문" not in text
+
+
+async def test_update_wiki_page_rejects_both_body_and_body_path(vault, tmp_path):
+    import pytest
+    h = {t.name: t for t in tools.build_wiki_tools(vault)}
+    await h["create_wiki_page"].handler({
+        "name": "임베딩 모델", "page_type": "concept", "body": "본문\n"})
+    f = tmp_path / "body.md"
+    f.write_text("본문\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="at most one"):
+        await h["update_wiki_page"].handler({
+            "path": "03_Resources/Concepts/임베딩-모델.md", "body": "x", "body_path": str(f)})
