@@ -361,7 +361,7 @@ def build_wiki_tools(vault: Path) -> list:
         idx, results = await asyncio.to_thread(_q)
         text = "\n".join(f"- [{r['ref']}] {r['title']} (score {r['score']})"
                          for r in results) or "no results"
-        if getattr(idx, "degraded", False):
+        if getattr(idx, "degraded", False) or getattr(idx, "query_degraded", False):
             text += "\n(경고: 임베딩을 쓸 수 없어 BM25 결과만이다. 키/네트워크를 확인해라)"
         return _ok(text)
 

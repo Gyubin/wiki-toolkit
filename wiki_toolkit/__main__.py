@@ -59,8 +59,11 @@ def load_env_file(path: Path | None = None) -> list[str]:
 
 
 def resolve_vault(explicit: str | None = None) -> Path:
-    """Resolve the vault path: explicit arg > $WIKI_VAULT > cwd."""
-    return Path(explicit or os.environ.get("WIKI_VAULT") or Path.cwd())
+    """Resolve the vault path: explicit arg > $WIKI_VAULT > cwd.
+
+    .env에서 온 $WIKI_VAULT는 셸을 거치지 않아 ~가 그대로 남을 수 있다. 펼쳐 준다.
+    """
+    return Path(explicit or os.environ.get("WIKI_VAULT") or Path.cwd()).expanduser()
 
 
 def _require_vault(vault: Path) -> Path:
@@ -133,6 +136,10 @@ def main() -> None:
             sys.exit(2)
         for r in idx.query(" ".join(rest), 8):
             print(f"[{r['score']}] {r['title']} ({r['ref']})")
+        if getattr(idx, "query_degraded", False):
+            # 웜 캐시면 빌드는 API 없이 성공하고 첫 원격 호출이 쿼리 임베딩이라,
+            # 장애가 여기서 처음 드러난다. SearchIndex.query가 BM25로 강등해 준다.
+            print("(임베딩 불가, BM25 결과만 보여준다)")
         return
     if cmd == "mcp":
         vault = _require_vault(resolve_vault(args[1] if len(args) > 1 else None))

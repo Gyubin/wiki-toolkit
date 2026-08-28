@@ -108,14 +108,31 @@ def test_ingested_clip_awaits_deletion_not_reingest(vault):
     구분하지 않으면 세션이 끊긴 뒤 새 세션이 안내를 따라 같은 클립을 다시 ingest해
     중복 source를 만든다 (create_source에는 url 중복 검사가 없다).
     """
-    (vault / "00_Inbox/browser-clips/clip.md").write_text(
+    clip = vault / "00_Inbox/browser-clips/clip.md"
+    clip.write_text(
         "---\ntitle: 글\nurl: http://example.com/a\n---\n\n본문\n", encoding="utf-8")
-    sources.create_source(vault, origin="browser", content="본문 " * 100,
+    # ingest 계약(content_path)대로 클립 파일 전체가 source 본문에 담긴다
+    sources.create_source(vault, origin="browser",
+                          content=clip.read_text(encoding="utf-8"),
                           date_str="2026-08-25", seq=1, url="http://example.com/a")
     s = pipeline.vault_state(vault, TODAY)
     assert s["unstructured_inbox"] == []
     assert s["ingested_leftovers"] == ["clip.md"]
     assert "git rm" in pipeline.next_step(vault, TODAY)
+
+
+def test_a_reclip_with_new_content_is_not_a_leftover(vault):
+    """같은 url을 나중에 다시 클리핑한 새 캡처를 leftover로 오인해 "지워라"고 하면
+    새 내용이 영영 사라진다. 클립 전문이 source에 담겨 있을 때만 leftover다."""
+    sources.create_source(vault, origin="browser", content="옛 내용 " * 50,
+                          date_str="2026-08-25", seq=1, url="http://example.com/a")
+    (vault / "00_Inbox/browser-clips/reclip.md").write_text(
+        "---\ntitle: 글\nurl: http://example.com/a\n---\n\n갱신된 새 내용\n",
+        encoding="utf-8")
+    s = pipeline.vault_state(vault, TODAY)
+    assert s["ingested_leftovers"] == []
+    assert s["unstructured_inbox"] == ["reclip.md"]
+    assert "인제스트해줘" in pipeline.next_step(vault, TODAY)
 
 
 def test_unparseable_clip_still_counts_as_needing_ingest(vault):

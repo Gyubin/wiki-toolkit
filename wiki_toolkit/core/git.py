@@ -36,8 +36,19 @@ def commit_vault(vault: Path, message: str, paths: list[str] | None = None) -> b
             ["git", "-C", str(vault), "add", "-A", "--", *scope],  # noqa: S607
             capture_output=True, check=True,
         )
+        check = subprocess.run(  # noqa: S603
+            ["git", "-C", str(vault), "diff", "--cached", "--quiet", "--", *scope],  # noqa: S607
+            capture_output=True,
+        )
+        if check.returncode == 0:
+            # 스코프에 커밋할 변경이 없다 (같은 내용을 다시 쓴 경우 등). 감사 추적이
+            # 빠진 게 아니므로 실패로 보고하지 않는다. 보고하면 도구가 멀쩡한 vault를
+            # 두고 "git 상태를 확인해라"라고 경고한다.
+            return True
         # commit에도 pathspec을 건다. add만 한정하면 사용자가 미리 스테이징해 둔
         # 무관한 파일이 이 커밋에 쓸려 들어간다 (감사 발견; docstring의 약속 위반).
+        # 알려진 한계: merge 진행 중(MERGE_HEAD)에는 git이 partial commit을 거부해
+        # False가 되고 경고가 붙는다. merge를 끝내면 다음 쓰기부터 다시 커밋된다.
         r = subprocess.run(  # noqa: S603
             ["git", "-C", str(vault), "commit", "--no-verify",  # noqa: S607
              "-m", message, "--", *scope],

@@ -323,3 +323,15 @@ async def test_collect_git_session_marks_diff_truncation(vault, monkeypatch):
     out = await h["collect_git_session"].handler({"repo": "r", "base": "HEAD~1"})
     text = out["content"][0]["text"]
     assert "diff truncated" in text and "25000" in text
+
+
+async def test_no_commit_warning_when_a_write_changes_nothing(vault):
+    """같은 status로 다시 승격하면 바이트가 안 바뀌어 커밋할 게 없다.
+    그건 실패가 아니므로 "git 상태를 확인해라" 경고가 붙으면 안 된다."""
+    _git_vault_for_tools(vault)
+    h = {t.name: t for t in tools.build_wiki_tools(vault)}
+    created = await h["create_claim"].handler({"claim": "주장", "claim_type": "opinion"})
+    cid = created["content"][0]["text"].split()[1]
+    await h["promote_claim"].handler({"claim_id": cid, "target_status": "attributed"})
+    res = await h["promote_claim"].handler({"claim_id": cid, "target_status": "attributed"})
+    assert "경고" not in res["content"][0]["text"]

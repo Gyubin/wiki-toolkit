@@ -175,3 +175,9 @@ def test_search_degrades_to_bm25_when_api_is_unreachable(vault, monkeypatch, cap
     cli.main()  # SystemExit 없이 끝나야 한다
     assert "BM25" in capsys.readouterr().out
     assert len(calls) == 2 and calls[1] is not None
+
+
+def test_resolve_vault_expands_tilde(monkeypatch):
+    """.env의 WIKI_VAULT는 셸을 거치지 않아 ~가 그대로 남을 수 있다."""
+    monkeypatch.setenv("WIKI_VAULT", "~/somevault")
+    assert cli.resolve_vault(None) == Path.home() / "somevault"

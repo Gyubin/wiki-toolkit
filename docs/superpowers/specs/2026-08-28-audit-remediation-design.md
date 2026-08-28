@@ -1,6 +1,6 @@
 # 2026-08 전체 감사 수습 (Spec)
 
-> 상태: 구현 중 (2026-08-28)
+> 상태: 구현 완료 (2026-08-28, 검증 라운드까지 반영)
 
 ## 문제
 
@@ -129,3 +129,30 @@ no-op이다).
   봇월 문구 하드 블록 완화, record_review 자동 승급, LICENSE 선택.
 - 같은 날 repo 이름을 wiki-agents에서 **wiki-toolkit**으로 바꿨다 (여기엔 에이전트가
   없다는 사실을 이름이 약속하도록). CLI 명령, MCP 서버명, 도구 접두사는 `wiki` 그대로다.
+
+## 검증 라운드에서 추가로 고친 것 (같은 날)
+
+수습 diff를 독립 검증자들이 다시 훑어 12건을 보고했고, 판정 결과 다음을 추가로 고쳤다.
+
+- **쿼리 시점 임베딩 무가드 (high).** BM25 강등이 빌드에만 걸려 있었다. 벡터 캐시가
+  따뜻하면 빌드는 API 없이 성공하고 첫 원격 호출이 쿼리 임베딩이라, 정확히 제일 흔한
+  상태에서 장애가 검색을 죽였다 (재현됨). `SearchIndex.query`가 잡아서 그 쿼리를 BM25로
+  답하고 `query_degraded`를 세운다. 도구와 CLI가 경고를 표면화한다.
+- **재클리핑 오분류 (medium).** leftover 판정이 url 일치뿐이라, 같은 페이지를 나중에
+  다시 클리핑한 새 캡처(내용 갱신)를 "지워라"로 안내했다. 따르면 새 내용이 사라진다.
+  클립 전문이 source 본문에 담겨 있을 때만 leftover다 (pipeline과 lint 동일 판정).
+- **커밋 경고 오발 (low).** 같은 내용을 다시 쓰면 커밋할 변경이 없는데 그걸 실패로
+  경고했다. 스코프에 staged 변경이 없으면 True를 돌려준다.
+- **render_review가 잘못된 id에 트레이스백 (low).** find_source의 id 검증이 낳은
+  ValueError를 잡아 기존 안내로 끝낸다.
+- **`~` 미확장 (medium).** `.env`의 `WIKI_EMBED_CACHE`와 `WIKI_VAULT`는 셸을 거치지
+  않아 `~`가 문자 그대로 남았다. 소비 지점에서 expanduser한다.
+- **검토표 힌트에 필수 `--out`이 빠져 있었다 (low).**
+- **문서 3건.** 클리퍼 문서와 README 두 벌이 pre-ingest 차단을 무조건으로 서술했는데
+  `WIKI_EMBED_SEND_SENSITIVE=1`이면 풀린다. 한글 README가 "git repo면" 조건을 빠뜨렸다.
+- **테스트 2건.** pre-ingest 차단을 iter_docs까지 관통해서 고정 (손으로 만든 docs만
+  검사해서 표시 쪽 절반은 되돌려도 초록이었다), `_EMBED_MAX_CHARS` 절단 고정.
+
+알고 남기는 것: merge 진행 중(MERGE_HEAD)에는 pathspec 커밋이 거부되어 그 창의 쓰기는
+감사 커밋 없이 경고만 남는다 (merge를 끝내면 복구). git이 partial commit을 merge 중에
+금지하는 것이라 우회하지 않는다.

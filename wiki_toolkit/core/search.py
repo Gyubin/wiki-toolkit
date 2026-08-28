@@ -82,7 +82,11 @@ def _embed_cache_dir() -> str:
     OS may purge, forcing a multi-hundred-MB re-download. Pin it to a stable location.
     """
     override = os.environ.get("WIKI_EMBED_CACHE")
-    return override or str(Path.home() / ".cache" / "wiki-toolkit" / "fastembed")
+    if override:
+        # .env에서 온 값은 셸을 거치지 않아 ~가 그대로 남는다. 안 펼치면 cwd에
+        # 문자 그대로 '~'라는 디렉터리가 생긴다.
+        return str(Path(override).expanduser())
+    return str(Path.home() / ".cache" / "wiki-toolkit" / "fastembed")
 
 
 def tokenize(text: str) -> list[str]:
@@ -243,7 +247,8 @@ class SearchIndex:
     들어온다 (검색에서 사라지지 않는다).
     """
 
-    degraded = False  # IndexCache가 임베딩 실패로 BM25 전용으로 강등했을 때 True
+    degraded = False        # IndexCache가 임베딩 실패로 BM25 전용으로 강등했을 때 True
+    query_degraded = False  # 쿼리 임베딩이 실패해 그 쿼리를 BM25만으로 답했을 때 True
 
     def __init__(self, docs: list[dict], embed_fn, vec_cache: VecCache | None = None,
                  prefixes: tuple[str, str] = _E5_PREFIXES,
@@ -282,9 +287,17 @@ class SearchIndex:
         bm = self._bm25.get_scores(tokenize(q)) if self._bm25 is not None \
             else np.zeros(n, dtype=np.float32)
         if self._doc_mat is not None:
-            qv = np.asarray(self._embed_fn([self._query_prefix + q])[0], dtype=np.float32)
-            qn = float(np.linalg.norm(qv))
-            cos = self._doc_mat @ (qv / qn if qn else qv)
+            try:
+                qv = np.asarray(self._embed_fn([self._query_prefix + q])[0], dtype=np.float32)
+                qn = float(np.linalg.norm(qv))
+                cos = self._doc_mat @ (qv / qn if qn else qv)
+                self.query_degraded = False
+            except RuntimeError:
+                # 캐시가 따뜻하면 빌드는 API 없이 성공하고, 첫 원격 호출이 바로 쿼리
+                # 임베딩이다. 여기서 죽으면 "장애 시 BM25 강등"이 정확히 제일 흔한
+                # 상태(웜 캐시)에서 안 지켜진다. 이 쿼리만 BM25로 답한다.
+                cos = np.zeros(n, dtype=np.float32)
+                self.query_degraded = True
         else:
             cos = np.zeros(n, dtype=np.float32)
         bm_rank = _competition_ranks(bm)

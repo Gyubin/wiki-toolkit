@@ -34,21 +34,32 @@ def _inbox_scan(vault: Path) -> tuple[list[str], list[str]]:
     파싱이 안 되는 파일도 ingest 대상으로 센다. 제목에 콜론이 든 클립이 YAML을 깨뜨리는
     일이 실제로 있었고, 조용히 건너뛰면 안내가 "클립 0개"라며 다음 단계로 넘어간다.
     """
-    source_urls: set[str] = set()
-    clips: list[tuple[str, str]] = []  # (파일명, 클립 frontmatter의 url)
+    source_texts: dict[str, str] = {}  # source의 url -> 정규화한 본문
+    clips: list[tuple[str, str, str]] = []  # (파일명, 클립 url, 정규화한 클립 파일 전문)
     for p in (Path(vault) / _INBOX).rglob("*.md"):
         try:
-            meta, _ = schema.parse_doc(p.read_text(encoding="utf-8"))
+            text = p.read_text(encoding="utf-8")
+            meta, body = schema.parse_doc(text)
         except Exception:  # noqa: BLE001 - 깨진 클립도 ingest 대상이다 (lint가 unparseable로 보고)
-            clips.append((p.name, ""))
+            clips.append((p.name, "", ""))
             continue
         if meta.get("id"):
             if meta.get("url"):
-                source_urls.add(str(meta["url"]))
+                source_texts[str(meta["url"])] = " ".join(body.split())
             continue
-        clips.append((p.name, str(meta.get("url") or meta.get("source") or "")))
-    pending = sorted(n for n, u in clips if not (u and u in source_urls))
-    leftovers = sorted(n for n, u in clips if u and u in source_urls)
+        clips.append((p.name, str(meta.get("url") or meta.get("source") or ""),
+                      " ".join(text.split())))
+
+    def _ingested(url: str, clip_text: str) -> bool:
+        # url 일치만으로 판정하면, 같은 페이지를 나중에 다시 클리핑한 새 캡처(내용이
+        # 갱신됨)까지 "ingest 끝남, 지워라"로 오인한다. 그 안내를 따르면 새 내용이
+        # 영영 사라진다. 클립 전문이 source 본문에 담겨 있을 때만 leftover다
+        # (ingest 계약이 content_path로 파일 전체를 넘기므로 진짜 leftover는 담겨 있다).
+        return bool(url) and url in source_texts \
+            and bool(clip_text) and clip_text in source_texts[url]
+
+    pending = sorted(n for n, u, t in clips if not _ingested(u, t))
+    leftovers = sorted(n for n, u, t in clips if _ingested(u, t))
     return pending, leftovers
 
 
@@ -119,8 +130,9 @@ def next_step(vault: Path, today_str: str) -> str | None:
         n = len(s["unverified_claims"])
         return (f"다음: 아직 검토 안 한 claim {n}개가 있다 "
                 f"(promote_claim으로 승격: verified는 evidence_refs 필수, "
-                f"확신이 없으면 attributed/opinion/accepted_for_now; "
-                f"검토표는 tools/render_review.py <vault> <source-id>로 찍는다)")
+                f"확신이 없으면 attributed/opinion/accepted_for_now; 검토표는 "
+                f"uv run python tools/render_review.py <vault> <source-id> "
+                f"--out review.html로 찍는다)")
     if s["citable_unlinked"]:
         n = len(s["citable_unlinked"])
         return (f"다음: 어떤 wiki page에도 안 실린 검토 끝난 claim {n}개가 있다 "

@@ -115,14 +115,15 @@ def run_checks(vault: Path, today_str: str) -> list[dict]:
                                "wiki page has no claim_refs"))
 
     source_bodies: dict[str, str] = {}
-    inbox_source_urls: set[str] = set()  # ingest 끝난 클립 원본 판정용 (pipeline과 같은 기준)
+    # ingest 끝난 클립 원본 판정용: source url -> 정규화 본문 (pipeline._inbox_scan과 같은 기준)
+    inbox_source_texts: dict[str, str] = {}
     for p in (vault / "00_Inbox").rglob("*.md"):
         parsed = _parse_full(p)
         if parsed is None:
             continue  # 아래 전체 순회에서 unparseable로 보고된다
         meta, body = parsed
         if meta.get("id") and meta.get("url"):
-            inbox_source_urls.add(str(meta["url"]))
+            inbox_source_texts[str(meta["url"])] = _norm_ws(body)
         if meta.get("type") != "source":
             continue
         if meta.get("id"):
@@ -170,9 +171,19 @@ def run_checks(vault: Path, today_str: str) -> list[dict]:
         # Web Clipper 유입물은 자체 frontmatter(title 등)는 있어도 wiki 스키마(id)가 없다
         if rel.startswith("00_Inbox") and not mid:
             clip_url = str((meta or {}).get("url") or (meta or {}).get("source") or "")
-            if clip_url and clip_url in inbox_source_urls:
+            ingested = False
+            if clip_url and clip_url in inbox_source_texts:
+                # url 일치만으로는 부족하다: 같은 페이지를 다시 클리핑한 새 캡처를
+                # "지워라"로 오인하면 새 내용이 사라진다. 클립 전문이 source 본문에
+                # 담겨 있을 때만 leftover다.
+                try:
+                    clip_text = _norm_ws(p.read_text(encoding="utf-8"))
+                except OSError:
+                    clip_text = ""
+                ingested = bool(clip_text) and clip_text in inbox_source_texts[clip_url]
+            if ingested:
                 findings.append(_f("inbox_ingested_leftover", "info", rel,
-                                   "clip already ingested (url matches a source); "
+                                   "clip already ingested (its text is inside a source); "
                                    "delete the original (git rm)"))
             else:
                 findings.append(_f("inbox_unstructured", "info", rel,

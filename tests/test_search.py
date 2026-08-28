@@ -525,3 +525,69 @@ def test_index_cache_degrades_to_bm25_when_embedding_fails(vault):
     assert idx.degraded is True
     out = idx.query("순위 융합")
     assert out and out[0]["ref"] == "RRF"
+
+
+def test_query_time_outage_degrades_to_bm25():
+    """웜 캐시면 빌드는 API 없이 성공하고, 첫 원격 호출이 쿼리 임베딩이다.
+    거기서 죽으면 "장애 시 BM25 강등"이 제일 흔한 상태에서 안 지켜진다."""
+    calls = {"n": 0}
+
+    def flaky(texts):
+        calls["n"] += 1
+        if calls["n"] > 1:
+            raise search.EmbeddingUnavailable("network down")
+        return [[1.0, 0.0] for _ in texts]
+
+    docs = [{"ref": "a", "title": "문서", "text": "순위 융합 이야기",
+             "path": "x.md", "sensitivity": ""}]
+    idx = search.SearchIndex(docs, flaky, prefixes=("", ""))
+    out = idx.query("순위 융합")
+    assert out and out[0]["ref"] == "a"       # BM25 결과는 나온다
+    assert idx.query_degraded is True
+    # 임베딩이 회복되면 플래그도 내려간다
+    calls["n"] = -10
+    idx.query("순위 융합")
+    assert idx.query_degraded is False
+
+
+def test_pre_ingest_block_is_wired_through_iter_docs(vault, monkeypatch, tmp_path):
+    """iter_docs의 pre_ingest 표시가 빠지면 차단이 통째로 풀린다. 손으로 만든 docs가
+    아니라 실제 vault 경로로 끝까지 고정한다."""
+    monkeypatch.setenv("WIKI_EMBED_PROVIDER", "openai")
+    monkeypatch.setenv("WIKI_EMBED_CACHE", str(tmp_path))
+    monkeypatch.delenv("WIKI_EMBED_SEND_SENSITIVE", raising=False)
+    (vault / "00_Inbox/browser-clips/clip.md").write_text(
+        "---\ntitle: 클립\nurl: http://x\n---\n\n은밀한 회사 문서 내용\n", encoding="utf-8")
+    sent: list[str] = []
+
+    def recording(texts):
+        sent.extend(texts)
+        return [[1.0, 0.0] for _ in texts]
+
+    monkeypatch.setattr(search, "_default_embedder", lambda: recording)
+    search.build_index(vault)
+    assert not any("은밀한" in t for t in sent)
+
+
+def test_embed_input_is_capped(vault):
+    """상한 없이 보내면 8k 토큰 넘는 문서 하나가 HTTP 400으로 빌드를 죽인다."""
+    docs = [{"ref": "big", "title": "긴 문서", "text": "가" * 20000,
+             "path": "x.md", "sensitivity": ""}]
+    got: list[str] = []
+
+    def embed(texts):
+        got.extend(texts)
+        return [[1.0] for _ in texts]
+
+    search.SearchIndex(docs, embed, prefixes=("", ""))
+    assert got and all(len(t) <= search._EMBED_MAX_CHARS for t in got)
+
+
+def test_embed_cache_override_expands_tilde(monkeypatch):
+    """.env에서 온 값은 셸을 거치지 않아 ~가 그대로 남는다. 안 펼치면 cwd에
+    문자 그대로 '~' 디렉터리가 생긴다."""
+    from pathlib import Path
+    monkeypatch.setenv("WIKI_EMBED_CACHE", "~/some-cache")
+    p = search._embed_cache_dir()
+    assert "~" not in p
+    assert p == str(Path.home() / "some-cache")

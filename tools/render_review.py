@@ -60,7 +60,9 @@ def read_source(vault: Path, source_id: str) -> tuple[dict, str]:
     """core의 find_source를 쓴다. 파일명이 제목으로 바뀌어도 id로 찾아준다."""
     try:
         p = sources.find_source(vault, source_id)
-    except FileNotFoundError:
+    except (FileNotFoundError, ValueError):
+        # find_source가 id 형식을 검증하게 되면서 ValueError도 나온다 (예: 날짜에
+        # 대시가 든 source-2026-08-28-001). 트레이스백 대신 같은 안내로 끝낸다.
         raise SystemExit(f"source를 찾을 수 없습니다: {source_id}") from None
     return schema.parse_doc(p.read_text(encoding="utf-8"))
 

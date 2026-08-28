@@ -23,7 +23,8 @@ Code가 하고, 각 작업의 절차는 `wiki_toolkit/prompts/*.md`에 적혀 �
 - **긴 본문은 파일 경로로 넘긴다.** 원문을 도구 인자로 다시 타이핑하는 단계에서 글자가
   조용히 바뀐다. 그래서 `create_source`는 `content_path`를, `update_wiki_page`는
   `body_path`를 받는다.
-- **쓰기마다 vault에 git 커밋이 남는다.** 무엇이 언제 바뀌었는지 히스토리로 되짚을 수 있다.
+- **vault가 git repo면 쓰기마다 커밋이 남는다.** 무엇이 언제 바뀌었는지 히스토리로
+  되짚을 수 있다.
 - **다음 할 일을 도구가 알려준다.** 쓰기 도구의 반환값 끝에 "다음: ..." 한 줄이 붙는다.
   파이프라인 단계를 사람이 외울 필요가 없다.
 
@@ -125,6 +126,7 @@ claim 상태는 `unverified`에서 시작해 `verified`(근거 필수), `attribu
 
 - `sensitivity: confidential` 문서의 본문은 API로 내보내지 않는다 (BM25로만 검색된다).
   아직 ingest 안 된 클립(id 없음)도 민감도 태그가 없으므로 내보내지 않는다.
+  `WIKI_EMBED_SEND_SENSITIVE=1`을 켜면 둘 다 전송으로 바뀐다.
 - 전부 로컬로 돌리려면 `WIKI_EMBED_PROVIDER=local` (fastembed, 첫 실행에 가중치 2.1GB 다운로드).
 - 벡터는 디스크에 캐시되고 내용이 바뀐 문서만 다시 임베딩한다. 임베딩 API가 일시적으로
   안 되면 검색은 죽지 않고 경고와 함께 BM25 결과만 내려간다.

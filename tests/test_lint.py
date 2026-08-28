@@ -239,12 +239,30 @@ def test_verified_with_blank_evidence_is_flagged(vault):
 
 def test_ingested_leftover_clip_is_classified_separately(vault):
     """ingest 끝난 클립 원본은 "needs ingest"가 아니라 삭제 대기로 보고한다."""
-    (vault / "00_Inbox/browser-clips/clip.md").write_text(
-        "---\ntitle: 글\nurl: http://example.com/a\n---\n\n본문\n", encoding="utf-8")
-    sources.create_source(vault, origin="browser", content="본문 " * 200,
+    clip = vault / "00_Inbox/browser-clips/clip.md"
+    clip.write_text(
+        "---\ntitle: 글\nurl: http://example.com/a\n---\n\n" + "본문 " * 60 + "\n",
+        encoding="utf-8")
+    # ingest 계약(content_path)대로 클립 파일 전체가 source 본문에 담긴다
+    sources.create_source(vault, origin="browser",
+                          content=clip.read_text(encoding="utf-8"),
                           date_str="2026-08-28", seq=1, url="http://example.com/a")
     rows = [f for f in lint.run_checks(vault, "2026-08-28")
             if f["ref"].endswith("clip.md")]
     checks = {f["check"] for f in rows}
     assert "inbox_ingested_leftover" in checks
     assert "inbox_unstructured" not in checks
+
+
+def test_a_reclip_with_new_content_still_needs_ingest(vault):
+    """url이 같아도 내용이 source에 없으면 새 캡처다. "지워라"로 오인하면 안 된다."""
+    sources.create_source(vault, origin="browser", content="옛 내용 " * 60,
+                          date_str="2026-08-28", seq=1, url="http://example.com/a")
+    (vault / "00_Inbox/browser-clips/reclip.md").write_text(
+        "---\ntitle: 글\nurl: http://example.com/a\n---\n\n갱신된 새 내용\n",
+        encoding="utf-8")
+    rows = [f for f in lint.run_checks(vault, "2026-08-28")
+            if f["ref"].endswith("reclip.md")]
+    checks = {f["check"] for f in rows}
+    assert "inbox_unstructured" in checks
+    assert "inbox_ingested_leftover" not in checks

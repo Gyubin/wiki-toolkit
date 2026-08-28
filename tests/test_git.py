@@ -58,10 +58,12 @@ def test_commit_vault_noop_outside_git(vault):
     assert git.commit_vault(vault, "msg") is False
 
 
-def test_commit_vault_nothing_to_commit(vault):
+def test_commit_vault_nothing_to_commit_is_not_a_failure(vault):
+    """같은 내용을 다시 쓰면 커밋할 변경이 없다. 그건 감사 추적 실패가 아니므로
+    False(경고 대상)가 아니라 True를 돌려준다."""
     _git_vault(vault)
     git.commit_vault(vault, "first")
-    assert git.commit_vault(vault, "empty") is False
+    assert git.commit_vault(vault, "empty") is True
 
 
 def test_commit_vault_scoped_paths_leave_user_edits_alone(vault):

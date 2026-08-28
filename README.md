@@ -132,9 +132,9 @@ fails silently: triage gets skipped, claims come out too coarse, quotes drift.
 Embeddings default to the OpenAI Embeddings API (`text-embedding-3-large`), so
 `OPENAI_API_KEY` is required.
 
-- `sensitivity: confidential` bodies are never sent to the API (they stay searchable via
+- `sensitivity: confidential` bodies are not sent to the API (they stay searchable via
   BM25). Clips that have not been ingested yet (no id) are not sent either, since they have
-  no sensitivity tag yet.
+  no sensitivity tag yet. Setting `WIKI_EMBED_SEND_SENSITIVE=1` opts into sending both.
 - To run fully local, set `WIKI_EMBED_PROVIDER=local` (fastembed; first run downloads 2.1GB
   of weights).
 - Vectors are cached on disk; only changed documents are re-embedded. When the embedding
