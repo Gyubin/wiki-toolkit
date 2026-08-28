@@ -20,7 +20,7 @@ L0  schema.py          enums, IDs, frontmatter render/parse - SINGLE SOURCE OF T
 L1  core/*             pure, deterministic vault logic (no LLM, no web)
       sources  claims  wiki  learning  index  ids  scaffold  git  projects  lint  search
       pipeline (다음 단계 계산)
-L2  tools.py           wraps core/* as MCP @tools (mcp__wiki__*, 19 tools);
+L2  tools.py           wraps core/* as MCP @tools (mcp__wiki__*, 20 tools);
                        write tools auto-commit the vault (audit trail)
 L3  __main__.py        CLI: `uv run wiki init|mcp|lint|search`
                        (mcp = 도구 세트를 stdio MCP로 노출, Claude Code 등록용)

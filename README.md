@@ -71,7 +71,7 @@ without `06_Metadata/` (exit 2).
 
 ```bash
 uv run wiki init [vault]             # create the folder tree and templates (only init scaffolds)
-uv run wiki mcp [vault]              # expose the 19 tools over stdio MCP (for Claude Code)
+uv run wiki mcp [vault]              # expose the 20 tools over stdio MCP (for Claude Code)
 uv run wiki lint [vault]             # read-only hygiene checks; exit 1 when errors exist
 uv run wiki search [vault] <query>   # hybrid search (BM25 + embeddings)
 ```

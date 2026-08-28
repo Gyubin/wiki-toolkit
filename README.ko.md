@@ -7,7 +7,7 @@ Markdown vault 하나를 개인 지식 베이스로 키우는 로컬 도구다. 
 학습카드로 올린다. vault는 Obsidian으로 읽고, 구조화된 쓰기는 전부 이 repo의 코드가 한다.
 
 예전 이름(`wiki-agents`)과 달리 **여기에 에이전트는 없다.** 이 repo는 vault를 다루는 순수
-로직(`core/`)과 그것을 MCP 도구 19개로 노출하는 껍데기까지다. 판단은 그 도구를 쥔 Claude
+로직(`core/`)과 그것을 MCP 도구 20개로 노출하는 껍데기까지다. 판단은 그 도구를 쥔 Claude
 Code가 하고, 각 작업의 절차는 `wiki_toolkit/prompts/*.md`에 적혀 있다.
 
 ## 핵심 아이디어
@@ -57,7 +57,7 @@ cp .env.example .env   # OPENAI_API_KEY를 채운다
 claude mcp add wiki -- uv run --directory "$PWD" wiki mcp ~/wiki-vault
 ```
 
-등록이 끝나면 Claude Code 안에서 `mcp__wiki__*` 도구 19개가 보인다. 브라우저에서 클립을
+등록이 끝나면 Claude Code 안에서 `mcp__wiki__*` 도구 20개가 보인다. 브라우저에서 클립을
 모으려면 [Obsidian Web Clipper 설정](docs/web-clipper-setup.md)을 따라 한다.
 
 vault 경로는 어느 명령이든 같은 순서로 정한다: 명시한 인자 > `$WIKI_VAULT` > 현재 디렉토리.
@@ -67,24 +67,24 @@ vault 경로는 어느 명령이든 같은 순서로 정한다: 명시한 인자
 
 ```bash
 uv run wiki init [vault]             # 폴더 구조와 템플릿 생성 (유일하게 vault를 만드는 명령)
-uv run wiki mcp [vault]              # 도구 19개를 stdio MCP 서버로 노출 (Claude Code 등록용)
+uv run wiki mcp [vault]              # 도구 20개를 stdio MCP 서버로 노출 (Claude Code 등록용)
 uv run wiki lint [vault]             # 읽기 전용 위생 검사. error가 있으면 exit 1
 uv run wiki search [vault] <질의>    # 하이브리드 검색 (BM25 + 임베딩)
 ```
 
-## MCP 도구 19개
+## MCP 도구 20개
 
 | 묶음 | 도구 | 하는 일 |
 | --- | --- | --- |
 | 수집 | `create_source` `triage_record` `update_source_raw` | 원문을 Inbox에 캡처하고 triage 결정(drop, keep-as-link, deep)을 기록한다 |
-| claim | `create_claim` `find_similar_claim` `promote_claim` `set_claim_status` `update_claim_quote` `list_pending` | claim 생성(항상 unverified), 중복 확인, 상태 변경. `verified`는 `evidence_refs` 필수. claim은 source의 민감도를 상속한다 |
+| claim | `create_claim` `find_similar_claim` `promote_claim` `set_claim_status` `update_claim_quote` `update_claim_text` `list_pending` | claim 생성(항상 unverified), 중복 확인, 상태 변경. `verified`는 `evidence_refs` 필수. claim은 source의 민감도를 상속한다 |
 | wiki | `create_wiki_page` `update_wiki_page` | 사람이 읽는 페이지 (`03_Resources/` 아래) |
 | 학습 | `create_learning_item` `list_due_reviews` `record_review` | 학습카드 생성과 간격 반복 복습 |
 | 코딩 세션 | `collect_git_session` `create_session_summary` `create_decision` | repo diff를 읽어 세션 요약과 ADR로 남긴다 (`01_Projects/<repo>/`, sensitivity=work) |
 | 검색과 안내 | `search_wiki` `vault_next_step` | vault 전체 검색, 파이프라인의 다음 할 일 |
 
 이미 들어간 것을 고칠 때는 파일을 손으로 고치지 말고 `update_source_raw`,
-`update_claim_quote`, `update_wiki_page`를 쓴다. 손으로 고치면 스키마, ID 채번,
+`update_claim_quote`, `update_claim_text`, `update_wiki_page`를 쓴다. 손으로 고치면 스키마, ID 채번,
 verified 게이트를 전부 우회하게 되는데, 이를 막아주는 코드는 없다. 규칙이지 코드가 아니다.
 
 ## vault 구조

@@ -11,7 +11,7 @@ from .core import claims, git, ids, learning, pipeline, projects, search, source
 
 WIKI_TOOL_NAMES = [
     "mcp__wiki__create_source", "mcp__wiki__triage_record",
-    "mcp__wiki__update_source_raw", "mcp__wiki__update_claim_quote",
+    "mcp__wiki__update_source_raw", "mcp__wiki__update_claim_quote", "mcp__wiki__update_claim_text",
     "mcp__wiki__create_claim", "mcp__wiki__find_similar_claim",
     "mcp__wiki__promote_claim", "mcp__wiki__set_claim_status",
     "mcp__wiki__list_pending", "mcp__wiki__create_wiki_page",
