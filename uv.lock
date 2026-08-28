@@ -1728,7 +1728,7 @@ wheels = [
 ]
 
 [[package]]
-name = "wiki-agents"
+name = "wiki-toolkit"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

@@ -1,4 +1,4 @@
-from wiki_agents import tools
+from wiki_toolkit import tools
 
 
 def test_build_wiki_server(vault):

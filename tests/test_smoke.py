@@ -1,3 +1,3 @@
 def test_package_imports():
-    import wiki_agents
-    assert wiki_agents is not None
+    import wiki_toolkit
+    assert wiki_toolkit is not None

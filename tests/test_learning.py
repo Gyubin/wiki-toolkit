@@ -1,5 +1,5 @@
-from wiki_agents import schema
-from wiki_agents.core import learning
+from wiki_toolkit import schema
+from wiki_toolkit.core import learning
 
 
 def test_create_learning_item(vault):

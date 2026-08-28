@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-import wiki_agents.__main__ as cli
+import wiki_toolkit.__main__ as cli
 
 
 def test_resolve_vault_explicit_wins(monkeypatch):

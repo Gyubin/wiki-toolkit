@@ -1,4 +1,4 @@
-# ARCHITECTURE — wiki-agents
+# ARCHITECTURE — wiki-toolkit
 
 > A map, not a manual. Structural boundaries that rarely change, and what does **not** exist where.
 > For the "why" of each feature, read the ExecPlans in `docs/superpowers/specs/` and `plans/`.
@@ -9,7 +9,7 @@ it. **The vault lives outside this repo** (a separate private directory at `$WIK
 is code only. Every entry point resolves the vault path via `resolve_vault` (`__main__.py`):
 explicit arg > `$WIKI_VAULT` > cwd.
 
-**여기에 에이전트는 없다.** 이름은 `wiki-agents`지만 이 repo가 하는 일은 vault 로직과 그것을 MCP
+**여기에 에이전트는 없다.** 이름은 `wiki-toolkit`지만 이 repo가 하는 일은 vault 로직과 그것을 MCP
 도구로 내보내는 것까지다. 에이전트는 그 도구를 물고 있는 Claude Code다. 웹 앱과 SDK 에이전트
 계층은 2026-08-25에 지웠다 (아래 "지운 것" 절).
 
@@ -80,7 +80,7 @@ violation fails the test, not a code review.
 ## What is NOT here (constraints by absence)
 
 - **`core/` has no LLM or web dependency.** No `claude_agent_sdk`, `fastapi`, `uvicorn`. Core is pure and unit-tested without a model or server. (Enforced.)
-- **`schema.py` imports nothing from `wiki_agents`.** It is the base. (Enforced.)
+- **`schema.py` imports nothing from `wiki_toolkit`.** It is the base. (Enforced.)
 - **어떤 모듈도 웹 프레임워크를 import하지 않는다.** (Enforced. 예전에는 `app.py`만 예외였다.)
 - **`verified`로 가는 우회로가 없다.** `evidence_refs` 하나뿐이다. 사람 판단으로 올릴 때도 그 판단을
   문장으로 `evidence_refs`에 적는다.

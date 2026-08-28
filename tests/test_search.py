@@ -3,7 +3,7 @@ import json
 import httpx
 import pytest
 
-from wiki_agents.core import claims, search
+from wiki_toolkit.core import claims, search
 
 _VOCAB = ["python", "typed", "react", "hook", "effect", "git", "commit", "search", "vector"]
 

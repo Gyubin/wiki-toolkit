@@ -1,6 +1,6 @@
 import pytest
 
-from wiki_agents.core import scaffold
+from wiki_toolkit.core import scaffold
 
 
 @pytest.fixture

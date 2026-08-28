@@ -2,7 +2,7 @@
 import ast
 from pathlib import Path
 
-PKG_ROOT = Path(__file__).resolve().parent.parent / "wiki_agents"
+PKG_ROOT = Path(__file__).resolve().parent.parent / "wiki_toolkit"
 FORBIDDEN_EXTERNAL = {"claude_agent_sdk", "fastapi", "uvicorn", "starlette"}
 ORCH = {"tools", "__main__"}
 
@@ -43,7 +43,7 @@ def core_violations(source: str, pkg: str) -> list[str]:
         if m.split(".")[0] in FORBIDDEN_EXTERNAL:
             bad.add(m)
         for orch in ORCH:
-            if m == f"wiki_agents.{orch}" or m.startswith(f"wiki_agents.{orch}."):
+            if m == f"wiki_toolkit.{orch}" or m.startswith(f"wiki_toolkit.{orch}."):
                 bad.add(m)
     return sorted(bad)
 
@@ -60,7 +60,7 @@ def test_core_is_pure():
 def test_schema_is_base():
     f = PKG_ROOT / "schema.py"
     refs = referenced_modules(f.read_text(encoding="utf-8"), _pkg_of(f))
-    assert not [m for m in refs if m.split(".")[0] == "wiki_agents"], refs
+    assert not [m for m in refs if m.split(".")[0] == "wiki_toolkit"], refs
 
 
 def test_no_module_imports_a_web_framework():
@@ -96,7 +96,7 @@ def test_imports_flow_upward_only():
         bad = []
         for m in referenced_modules(f.read_text(encoding="utf-8"), _pkg_of(f)):
             parts = m.split(".")
-            if parts[0] != "wiki_agents" or len(parts) < 2:
+            if parts[0] != "wiki_toolkit" or len(parts) < 2:
                 continue
             tgt = parts[1]
             if tgt in _LAYER and _LAYER[tgt] > _LAYER[src]:
@@ -108,8 +108,8 @@ def test_imports_flow_upward_only():
 
 def test_checker_catches_violation():
     assert "claude_agent_sdk" in core_violations(
-        "from claude_agent_sdk import tool\nfrom .. import schema\n", "wiki_agents.core")
-    assert any("wiki_agents.tools" in m for m in core_violations(
-        "from ..tools import WIKI_TOOL_NAMES\n", "wiki_agents.core"))
+        "from claude_agent_sdk import tool\nfrom .. import schema\n", "wiki_toolkit.core")
+    assert any("wiki_toolkit.tools" in m for m in core_violations(
+        "from ..tools import WIKI_TOOL_NAMES\n", "wiki_toolkit.core"))
     assert core_violations("from .. import schema\nfrom . import index\n",
-                           "wiki_agents.core") == []
+                           "wiki_toolkit.core") == []

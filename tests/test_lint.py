@@ -1,5 +1,5 @@
-from wiki_agents import schema
-from wiki_agents.core import claims, index, lint, sources, wiki
+from wiki_toolkit import schema
+from wiki_toolkit.core import claims, index, lint, sources, wiki
 
 
 def _seed(vault):
@@ -97,7 +97,7 @@ def test_unclosed_fence_file_is_reported(vault):
 
 
 def test_per_project_session_ids_are_not_duplicates(vault):
-    from wiki_agents.core import projects
+    from wiki_toolkit.core import projects
     projects.create_session_summary(vault, repo="/tmp/repo-a", title="a", body="b",
                                     date_str="2026-01-01", seq=1)
     projects.create_session_summary(vault, repo="/tmp/repo-b", title="b", body="b",

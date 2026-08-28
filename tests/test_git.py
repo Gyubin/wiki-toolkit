@@ -2,7 +2,7 @@ import subprocess
 
 import pytest
 
-from wiki_agents.core import git
+from wiki_toolkit.core import git
 
 
 @pytest.fixture

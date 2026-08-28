@@ -1,4 +1,4 @@
-from wiki_agents.core import claims, ids
+from wiki_toolkit.core import claims, ids
 
 
 def test_next_seq_empty_vault(vault):
@@ -44,7 +44,7 @@ def test_next_seq_reads_ids_from_frontmatter_when_filenames_are_titles(vault):
     이미 있는 id를 다시 발급한다. 2026-08-28에 실제로 재현했다 (004까지 있는데 1이 나왔다).
     id의 단일 출처는 frontmatter다 (AGENTS.md §2).
     """
-    from wiki_agents.core import sources
+    from wiki_toolkit.core import sources
     for seq in (1, 2):
         sources.create_source(vault, origin="browser", content="본문" * 200,
                               date_str="2026-08-27", seq=seq)

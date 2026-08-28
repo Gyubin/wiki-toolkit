@@ -1,5 +1,5 @@
 [project]
-name = "wiki-agents"
+name = "wiki-toolkit"
 version = "0.1.0"
 description = "Personal AI wiki + learning agent that writes a separate Markdown vault"
 requires-python = ">=3.11"
@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-wiki = "wiki_agents.__main__:main"
+wiki = "wiki_toolkit.__main__:main"
 
 [dependency-groups]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff>=0.6", "pre-commit>=3.7"]
@@ -43,6 +43,6 @@ ignore = ["S101"]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-# dist name is `wiki-agents` but the import package stays `wiki_agents` — tell hatchling.
+# dist name is `wiki-toolkit` but the import package stays `wiki_toolkit` — tell hatchling.
 [tool.hatch.build.targets.wheel]
-packages = ["wiki_agents"]
+packages = ["wiki_toolkit"]

@@ -1,5 +1,5 @@
 """파이프라인 "다음에 할 일" 계산 (사람이 단계를 외우지 않아도 되게 하는 장치)."""
-from wiki_agents.core import claims, learning, pipeline, wiki
+from wiki_toolkit.core import claims, learning, pipeline, wiki
 
 TODAY = "2026-08-25"
 

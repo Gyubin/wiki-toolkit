@@ -1,4 +1,4 @@
-# wiki-agents
+# wiki-toolkit
 
 Markdown vault 하나를 개인 지식 베이스로 키우는 로컬 도구다. 브라우저 클립이나 코딩 세션
 같은 원문을 받아서 출처가 달린 주장(claim) 단위로 쪼개고, 사람이 검토한 것만 wiki 페이지와
@@ -6,7 +6,7 @@ Markdown vault 하나를 개인 지식 베이스로 키우는 로컬 도구다. 
 
 이름과 달리 **여기에 에이전트는 없다.** 이 repo는 vault를 다루는 순수 로직(`core/`)과 그것을
 MCP 도구 19개로 노출하는 껍데기까지다. 판단은 그 도구를 쥔 Claude Code가 하고, 각 작업의
-절차는 `wiki_agents/prompts/*.md`에 적혀 있다.
+절차는 `wiki_toolkit/prompts/*.md`에 적혀 있다.
 
 ## 핵심 아이디어
 
@@ -41,8 +41,8 @@ MCP 도구 19개로 노출하는 껍데기까지다. 판단은 그 도구를 쥔
 [uv](https://docs.astral.sh/uv/)와 Python 3.11 이상이 필요하다.
 
 ```bash
-git clone https://github.com/Gyubin/wiki-agents.git
-cd wiki-agents
+git clone https://github.com/Gyubin/wiki-toolkit.git
+cd wiki-toolkit
 
 # 1) vault 만들기 (이 repo 밖의 별도 디렉토리에)
 uv run wiki init ~/wiki-vault
@@ -100,11 +100,11 @@ vault는 이 repo 밖의 별도 디렉토리다(보통 비공개 git repo). `wik
 
 claim 상태는 `unverified`에서 시작해 `verified`(근거 필수), `attributed`, `opinion`,
 `partially_true`, `accepted_for_now`로 올라가거나 `disputed`, `outdated`, `deprecated`,
-`rejected`로 내려간다. 스키마의 원본은 `wiki_agents/schema.py` 하나다.
+`rejected`로 내려간다. 스키마의 원본은 `wiki_toolkit/schema.py` 하나다.
 
 ## prompts/는 코드가 아니라 계약서다
 
-`wiki_agents/prompts/*.md`는 코드가 읽지 않는다. Claude Code가 작업 전에 직접 읽는
+`wiki_toolkit/prompts/*.md`는 코드가 읽지 않는다. Claude Code가 작업 전에 직접 읽는
 절차서다. 자동으로 붙여주는 계층이 없으므로, 읽지 않으면 triage를 건너뛰거나 claim을 덜
 쪼개는 식으로 조용히 어긋난다.
 

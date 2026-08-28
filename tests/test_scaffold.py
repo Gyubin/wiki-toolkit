@@ -1,4 +1,4 @@
-from wiki_agents.core import scaffold
+from wiki_toolkit.core import scaffold
 
 
 def test_scaffold_creates_dirs(tmp_path):

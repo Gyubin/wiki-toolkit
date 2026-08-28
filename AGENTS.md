@@ -12,7 +12,7 @@ for the code map and `docs/superpowers/` for the design history (ExecPlans).
   CLI는 안내 + exit 2). 오프라인이나 전량 로컬이 필요하면 `WIKI_EMBED_PROVIDER=local`
   (fastembed, 첫 실행에 가중치 2.1GB 다운로드). `sensitivity: confidential` 문서 본문만 원격 임베딩에서
   제외된다(BM25로는 검색됨). 키와 설정은 셸 export 또는 repo 루트 `.env`(gitignore, `.env.example` 참조).
-- **여기에 에이전트는 없다.** 웹 앱과 SDK 에이전트 계층은 2026-08-25에 지웠다 (`e7387fb`). 이 repo는 vault 로직(`core/`)과 그것을 MCP 도구로 노출하는 껍데기(`tools.py`, `__main__.py`)뿐이다. 에이전트는 이 도구들을 물고 있는 Claude Code다. 절차는 `wiki_agents/prompts/*.md`에 있고 **아무도 자동으로 붙여주지 않는다.** 작업 전에 해당 파일을 직접 읽는다.
+- **여기에 에이전트는 없다.** 웹 앱과 SDK 에이전트 계층은 2026-08-25에 지웠다 (`e7387fb`). 이 repo는 vault 로직(`core/`)과 그것을 MCP 도구로 노출하는 껍데기(`tools.py`, `__main__.py`)뿐이다. 에이전트는 이 도구들을 물고 있는 Claude Code다. 절차는 `wiki_toolkit/prompts/*.md`에 있고 **아무도 자동으로 붙여주지 않는다.** 작업 전에 해당 파일을 직접 읽는다.
 
 ## 2. Integrity — go through `core/`, never hand-write structured files
 - All structured writes — sources, claims, wiki pages, sessions, ADRs, learning items, and the index/log — **must** go through a `core/` function (or its `@tool` wrapper). Do **not** hand-roll Markdown or frontmatter.
@@ -26,7 +26,7 @@ for the code map and `docs/superpowers/` for the design history (ExecPlans).
 
 ## 4. Layering (enforced)
 - Imports flow upward only: `schema → core → tools → __main__`.
-- `core/` stays **pure**: no `claude_agent_sdk`, `fastapi`, `uvicorn`. `schema.py` imports nothing from `wiki_agents`. **어떤 모듈도 웹 프레임워크를 import하지 않는다** (예전에는 `app.py`만 예외였다; 그 예외가 없어져서 검사가 강해졌다).
+- `core/` stays **pure**: no `claude_agent_sdk`, `fastapi`, `uvicorn`. `schema.py` imports nothing from `wiki_toolkit`. **어떤 모듈도 웹 프레임워크를 import하지 않는다** (예전에는 `app.py`만 예외였다; 그 예외가 없어져서 검사가 강해졌다).
 - `tests/test_architecture.py` fails on any violation. Run it before assuming a refactor is safe.
 
 ## 5. Workflow

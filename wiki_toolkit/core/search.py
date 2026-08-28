@@ -70,7 +70,7 @@ def _embed_cache_dir() -> str:
     OS may purge, forcing a multi-hundred-MB re-download. Pin it to a stable location.
     """
     override = os.environ.get("WIKI_EMBED_CACHE")
-    return override or str(Path.home() / ".cache" / "wiki-agents" / "fastembed")
+    return override or str(Path.home() / ".cache" / "wiki-toolkit" / "fastembed")
 
 
 def tokenize(text: str) -> list[str]:

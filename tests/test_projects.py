@@ -1,5 +1,5 @@
-from wiki_agents import schema
-from wiki_agents.core import projects
+from wiki_toolkit import schema
+from wiki_toolkit.core import projects
 
 
 def test_ensure_project(vault):

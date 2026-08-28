@@ -22,9 +22,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from wiki_agents import schema  # noqa: E402
-from wiki_agents.core import claims as claims_core  # noqa: E402
-from wiki_agents.core import sources  # noqa: E402
+from wiki_toolkit import schema  # noqa: E402
+from wiki_toolkit.core import claims as claims_core  # noqa: E402
+from wiki_toolkit.core import sources  # noqa: E402
 
 TEMPLATE = Path(__file__).with_name("review_template.html")
 

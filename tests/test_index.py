@@ -1,4 +1,4 @@
-from wiki_agents.core import index
+from wiki_toolkit.core import index
 
 
 def test_append_log(vault):
