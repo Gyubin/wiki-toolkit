@@ -20,12 +20,16 @@ def _slug(name: str) -> str:
 def create_wiki_page(
     vault: Path, *, name: str, page_type: str, body: str,
     claim_refs: list[str], date_str: str, domain: list[str] | None = None,
-    sensitivity: str = "personal", overwrite: bool = False,
+    sensitivity: str = "personal", aliases: list[str] | None = None,
+    overwrite: bool = False,
 ) -> Path:
     if page_type not in schema.WIKI_PAGE_TYPES:
         raise ValueError(f"unknown page_type: {page_type}")
     meta = {
         "type": page_type, "name": name, "domain": domain or [],
+        # aliases: 한글 제목의 영문 원어 등 다른 이름. 검색 색인(head)과 Obsidian
+        # 퀵 스위처가 둘 다 이 키를 읽는다.
+        "aliases": aliases or [],
         "status": "draft", "sensitivity": sensitivity,
         "created": date_str, "updated": date_str,
         "claim_refs": claim_refs, "code_refs": [],
@@ -44,10 +48,12 @@ def create_wiki_page(
 def update_wiki_page(
     path: Path, *, body: str | None = None,
     add_claim_refs: list[str] | None = None, status: str | None = None,
-    date_str: str | None = None,
+    aliases: list[str] | None = None, date_str: str | None = None,
 ) -> Path:
     path = Path(path)
     meta, old_body = schema.parse_doc(path.read_text(encoding="utf-8"))
+    if aliases is not None:
+        meta["aliases"] = aliases
     if add_claim_refs:
         refs = list(meta.get("claim_refs", []))
         for r in add_claim_refs:

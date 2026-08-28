@@ -3,7 +3,7 @@ import json
 import httpx
 import pytest
 
-from wiki_toolkit.core import claims, search
+from wiki_toolkit.core import claims, search, sources, wiki
 
 _VOCAB = ["python", "typed", "react", "hook", "effect", "git", "commit", "search", "vector"]
 
@@ -591,3 +591,50 @@ def test_embed_cache_override_expands_tilde(monkeypatch):
     p = search._embed_cache_dir()
     assert "~" not in p
     assert p == str(Path.home() / "some-cache")
+
+
+def test_id_is_in_indexed_text(vault):
+    """frontmatter는 parse_doc이 벗겨내므로 head가 id를 안 넣으면 색인에 id가 아예 없다.
+
+    2026-08-28 실측: id 문자열이 자기 문서의 색인 텍스트에 등장하는 문서가 source 0/5,
+    claim 0/90이었다. 질의 수준 테스트는 동점 시 길이 정규화 우연으로 통과할 수 있어서
+    (실제로 구현 전에 통과했다) 색인 텍스트를 직접 본다.
+    """
+    claims.create_claim(vault, claim="라우터가 토큰을 배분한다", claim_type="technical_fact",
+                        source_refs=["s"], date_str="2026-01-02", seq=1)
+    texts = {d["ref"]: d["text"] for d in search.iter_docs(vault)}
+    assert "claim-20260102-001" in texts["claim-20260102-001"]
+
+
+def test_id_query_finds_the_doc(vault):
+    """id는 frontmatter에만 있어서 예전에는 색인 텍스트에 아예 없었다.
+
+    2026-08-28 실측: id 문자열이 자기 문서의 색인 텍스트에 등장하는 문서가 source 0/5,
+    claim 0/90이라 id 질의가 rank 11~49로 밀렸다. head에 id를 넣어 고친다.
+    """
+    # 대상을 파일 순서상 뒤(더 늦은 날짜)에 두고, 실제 vault처럼 같은 날짜와 seq를 가진
+    # 반대 종류 문서(source-20260102-001)도 넣는다. 날짜와 seq 토큰을 공유하는 문서가
+    # 있으면 정확 일치가 1위를 놓칠 수 있어(2026-08-28 실측 81/95) top-3 진입까지만
+    # 보장한다. rank-1 보장이 필요해지면 exact-ref 단축 경로를 재검토한다 (spec 참조).
+    claims.create_claim(vault, claim="git commit message style", claim_type="technical_fact",
+                        source_refs=["s"], date_str="2026-01-01", seq=1)
+    claims.create_claim(vault, claim="라우터가 토큰을 배분한다", claim_type="technical_fact",
+                        source_refs=["s"], date_str="2026-01-02", seq=1)
+    sources.create_source(vault, origin="browser", date_str="2026-01-02", seq=1,
+                          content="같은 날짜와 seq를 가진 source 문서 " * 5)
+    idx = search.build_index(vault, embed_fn=_zero_embed)
+    refs = [r["ref"] for r in idx.query("claim-20260102-001", k=8)]
+    assert "claim-20260102-001" in refs[:3]
+
+
+def test_alias_query_finds_wiki_page(vault):
+    """한글 제목 페이지를 영문 원어로 찾는 경로: aliases frontmatter가 색인에 들어가야 한다."""
+    wiki.create_wiki_page(vault, name="전문가 혼합", page_type="concept",
+                          body="라우터가 토큰을 배분한다", claim_refs=[],
+                          date_str="2026-01-01", aliases=["mixture of experts"])
+    wiki.create_wiki_page(vault, name="다른 페이지", page_type="concept",
+                          body="experts라는 단어가 본문에 있다 mixture", claim_refs=[],
+                          date_str="2026-01-01")
+    idx = search.build_index(vault, embed_fn=_zero_embed)
+    results = idx.query("mixture of experts", k=3)
+    assert results and results[0]["title"] == "전문가 혼합"

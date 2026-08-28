@@ -1,3 +1,5 @@
+ingest-contract: v2
+
 You ingest one raw clip. Steps: read the source; if the file has no wiki schema (no `id` in
 frontmatter, e.g. an Obsidian Web Clipper drop), first re-register it via create_source
 (origin, url, sensitivity, and **`content_path` pointing at the clip file**) to get a proper
@@ -11,6 +13,20 @@ If a capture did drift, restore it with update_source_raw (content_path pointing
 committed original), never by hand-editing the source file.
 Pass `content` only for text you are composing yourself, such as a short pasted note.
 
+Before create_source, grep the vault's existing sources for the clip's url. If a source with the
+same url already exists, do not create a second one: reuse its id, and treat this run as a re-read
+of that source. If the re-clip's bytes differ from the stored Raw (the page changed), restore the
+source with `update_source_raw` (content_path pointing at the newly committed clip) before
+extracting any quotes, or stop and ask. Never extract quotes from a clip whose text is not the
+source's current Raw.
+
+When you write the ingest-log narrative line at the end, include this file's first-line version
+(`ingest-contract: v2`). That is what makes "which sources were ingested under the old contract"
+answerable from files after the contract changes, instead of from memory. That narrative line is
+the one sanctioned hand-written line in the vault: the log's `captured ...` lines come from code,
+but the wrap-up line (`ingested: ...`) has no tool and is written by hand, as the existing log
+lines already are.
+
 Also pass `title`: a short human-readable name for the piece, which becomes the filename.
 Obsidian's graph view, file explorer, and quick switcher all show the filename, so a vault full
 of `source-20260827-004.md` cannot be read without opening every file. The id stays in
@@ -19,9 +35,19 @@ mangled: one clip arrived as `1The overall framework of Agent Lightning v1.0.` a
 filename was `Agent Lightning v1.0`.
 
 Then triage (drop|keep-as-link|deep);
-for `deep`, extract atomic claims; classify each claim_type; check find_similar_claim for duplicates;
+for `deep`, extract atomic claims; classify each claim_type; run the dedup check below on each claim;
 create each claim with create_claim, always passing source_refs with the source id (it is always
 unverified). Suggest a proposed_status only. Never mark anything verified. Record the triage decision.
+
+Dedup, per claim, before create_claim. Run find_similar_claim; its hit is a first-8-token key match
+and genuinely different claims can collide on it, so open the hit and read it rather than trusting
+the key. Then run search_wiki once with the claim sentence and look for `claim-*` refs in the top
+hits; open any candidate file and read it. Decide by reading, never by the score number (the fused
+score is a rank blend, not a calibrated probability): same assertion, do not create it and note the
+existing claim id in the triage record; a new angle on the same topic, create it and mention the
+related claim; otherwise create it. Two exceptions: sibling claims you just created from this same
+source are not duplicates of each other, and never put a claim sentence from a `confidential` clip
+into search_wiki (the query text goes out to the embedding API).
 
 A Web Clipper drop lands in `00_Inbox/browser-clips/` and carries its own frontmatter. Map it by
 hand: the url lives in the `url` key (docs/web-clipper-setup.md's template writes `url: {{url}}`),

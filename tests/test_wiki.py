@@ -57,6 +57,26 @@ def test_create_wiki_page_refuses_silent_overwrite(vault):
     assert "명시적 갱신" in path.read_text(encoding="utf-8")
 
 
+def test_create_wiki_page_writes_aliases(vault):
+    path = wiki.create_wiki_page(
+        vault, name="전문가 혼합", page_type="concept", body="b",
+        claim_refs=[], date_str="2026-08-28", aliases=["Mixture of Experts", "MoE"],
+    )
+    meta, _ = schema.parse_doc(path.read_text(encoding="utf-8"))
+    assert meta["aliases"] == ["Mixture of Experts", "MoE"]
+
+
+def test_update_wiki_page_replaces_aliases(vault):
+    p = wiki.create_wiki_page(
+        vault, name="전문가 혼합", page_type="concept", body="b",
+        claim_refs=[], date_str="2026-08-28",
+    )
+    wiki.update_wiki_page(p, aliases=["Mixture of Experts"], date_str="2026-08-28")
+    meta, body = schema.parse_doc(p.read_text(encoding="utf-8"))
+    assert meta["aliases"] == ["Mixture of Experts"]
+    assert body.strip() == "b"
+
+
 def test_update_wiki_page_adds_claim_refs(vault):
     path = wiki.create_wiki_page(
         vault, name="useEffect timing", page_type="concept",

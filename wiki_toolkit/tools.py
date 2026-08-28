@@ -236,30 +236,33 @@ def build_wiki_tools(vault: Path) -> list:
             "\n".join(f"{r['id']}: {r['claim'][:60]}" for r in rows) or "none"))
 
     @tool("create_wiki_page", "Create a wiki page (concept/pattern/...). "
+          "Pass aliases for the page's other names (e.g. the English original of a "
+          "Korean title) so search and Obsidian's quick switcher find both. "
           "Fails if the page exists; then use update_wiki_page instead.",
           _schema({"name": _STR, "page_type": _STR, "body": _STR},
-                  {"claim_refs": _STR_LIST, "domain": _STR_LIST}))
+                  {"claim_refs": _STR_LIST, "domain": _STR_LIST, "aliases": _STR_LIST}))
     async def create_wiki_page(args):
         p = wiki.create_wiki_page(
             vault, name=args["name"], page_type=args["page_type"], body=args["body"],
             claim_refs=args.get("claim_refs", []), date_str=schema.today_str(),
-            domain=args.get("domain"),
+            domain=args.get("domain"), aliases=args.get("aliases"),
         )
         return _done(f"created {p.name}", ["03_Resources"])
 
     @tool("update_wiki_page",
-          "Update an existing wiki page (body, claim_refs, status). Pass body_path "
-          "instead of body to take the new body from a file: retyping a long page to "
-          "change one line is how wording silently drifts.",
+          "Update an existing wiki page (body, claim_refs, status, aliases). aliases "
+          "replaces the whole list, so pass every alias the page should keep. Pass "
+          "body_path instead of body to take the new body from a file: retyping a long "
+          "page to change one line is how wording silently drifts.",
           _schema({"path": _STR},
                   {"body": _STR, "body_path": _STR, "add_claim_refs": _STR_LIST,
-                   "status": _STR}))
+                   "status": _STR, "aliases": _STR_LIST}))
     async def update_wiki_page(args):
         p = resolve_wiki_page_path(vault, args["path"])
         wiki.update_wiki_page(
             p, body=resolve_optional_body(args),
             add_claim_refs=args.get("add_claim_refs"), status=args.get("status"),
-            date_str=schema.today_str(),
+            aliases=args.get("aliases"), date_str=schema.today_str(),
         )
         return _done(f"updated {p.name}", ["03_Resources"])
 

@@ -17,6 +17,8 @@ for the code map and `docs/superpowers/` for the design history (ExecPlans).
 
 ## 2. Integrity — go through `core/`, never hand-write structured files
 - All structured writes — sources, claims, wiki pages, sessions, ADRs, learning items, and the index/log — **must** go through a `core/` function (or its `@tool` wrapper). Do **not** hand-roll Markdown or frontmatter.
+  한 가지 예외: `ingest-log.md`의 마무리 서술 줄(`ingested: ...`)은 감싸는 도구가 없어 손으로
+  쓴다 (`prompts/ingest.md` 참조; 기존 로그의 서술 줄들이 이미 이 관행이다).
 - `schema.py` is the **single source of truth** for enums, IDs, and frontmatter. Add a status/type there first; never inline a literal list elsewhere.
 
 ## 3. Gates and sensitivity
@@ -32,6 +34,9 @@ for the code map and `docs/superpowers/` for the design history (ExecPlans).
 
 ## 5. Workflow
 - Non-trivial change: write a spec + plan under `docs/superpowers/`, then TDD (failing test → impl → pass).
+- 랭킹 로직(`core/search.py`의 tokenize, RRF, 융합 가중, iter_docs의 색인 텍스트 구성)을 바꿀 때는 질의와 정답 세트(hard-negative
+  포함 10~20개)를 기존 embed_fn 주입 패턴으로 pytest 케이스에 먼저 넣고, before/after를 같은
+  실행에서 잰다. 상시 벤치 인프라는 만들지 않는다 (2026-08-28 gbrain 검토 spec 참조).
 - `uv run ruff check` clean and `uv run pytest` green before committing. Fast loops are wired via `.pre-commit-config.yaml` (ruff at commit, pytest at push); install once with `uv run pre-commit install --hook-type pre-commit --hook-type pre-push`.
 - Commit **only the files your task touched** — `git add -A` is forbidden. End commit subjects in the conventional `feat:`/`test:`/`docs:` style already used.
 

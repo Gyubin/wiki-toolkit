@@ -127,7 +127,16 @@ def iter_docs(vault: Path) -> list[dict]:
         title = (meta.get("title") or meta.get("name") or meta.get("claim")
                  or meta.get("topic") or p.stem)
         ref = meta.get("id") or meta.get("name") or str(p.relative_to(vault))
-        head = " ".join(str(meta.get(k, "")) for k in ("title", "name", "claim", "topic"))
+        # id와 aliases는 frontmatter에만 있어서 head에 안 넣으면 색인에 아예 등장하지
+        # 않는다 (parse_doc이 frontmatter를 벗겨낸다). 2026-08-28 실측: id 질의가
+        # rank 11~49로 밀려 기본 k=8 밖이었다.
+        aliases = meta.get("aliases") or []
+        if isinstance(aliases, str):  # Obsidian 손편집은 스칼라 aliases도 정상 문법이다
+            aliases = [aliases]
+        head = " ".join(
+            [str(meta.get(k, "")) for k in ("id", "title", "name", "claim", "topic")]
+            + [str(a) for a in aliases]
+        )
         text = f"{head}\n{body}".strip()
         rel = str(p.relative_to(vault))
         docs.append({"ref": str(ref), "title": str(title), "text": text,

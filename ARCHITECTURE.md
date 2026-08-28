@@ -126,9 +126,12 @@ accepted_for_now 3, verified 0). 웹이 독점하던 "증거 없이 verified" �
 
 - **verify에는 Bash를 주지 않는다.** verify는 신뢰 불가 클립에서 나온 claim 텍스트를 다룬다.
   프롬프트 주입이 성공했을 때 실행 능력이 없어야 한다. 테스트 실행은 wrap의 몫이었다.
-  → `verify.md`에 이 얘기가 **전혀 없다.** 오직 `subagents.py`의 주석에만 있었다.
+  → 지울 당시 `verify.md`에 이 얘기가 **전혀 없었다** (오직 `subagents.py`의 주석에만).
+  지금은 `verify.md` 11행에 Bash 금지가 적혀 있다.
 - **lint는 `Write`/`Edit`/`Bash`를 전부 막는다.** 읽기 전용 감사다.
-  → `lint.md`는 "claim을 고치거나 승격하지 말라"까지만 적고 있다. 도구 차단은 안 적혀 있었다.
+  → 지울 당시 `lint.md`는 "claim을 고치거나 승격하지 말라"까지만 적고 있었다. 지금은
+  `lint.md`가 도구 규칙을 직접 적는다: vault 안 Write/Edit 금지, Bash 금지, vault 밖
+  스크래치패드의 영수증 파일 1개만 예외로 쓸 수 있다 (2026-08-28 완화, gbrain 검토 spec 결정 4).
 - **answer는 `Write`를 막는다.** 답변에서 나온 통찰은 `create_claim`으로 unverified로만 들어간다.
   → 이건 `answer.md` 마지막 줄에 "You may not use Write"로 적혀 있다. `Edit` 차단만 코드에 있었다.
 

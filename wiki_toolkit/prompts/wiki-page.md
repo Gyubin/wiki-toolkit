@@ -49,6 +49,13 @@ status를 읽지 페이지 제목을 읽지 않는다.
 `claim_refs` frontmatter에 든 id 집합과 본문에 나오는 id 집합이 정확히 같아야 한다. 한쪽에만
 있으면 근거를 되짚을 수 없거나 없는 근거를 주장하는 것이다.
 
+## 영문 원어는 aliases에 적는다
+
+제목이 한글인데 원어가 영문이면(반대도 같다) `create_wiki_page`의 `aliases` 인자에 다른
+이름들을 함께 넘긴다. 예: name "전문가 혼합", aliases ["Mixture of Experts", "MoE"].
+검색 색인과 Obsidian 퀵 스위처가 둘 다 이 frontmatter 키를 읽어서, 어느 표기로 찾아도
+페이지가 나온다. 이미 있는 페이지에는 `update_wiki_page`의 `aliases`로 넣는다.
+
 ## 출처는 파일명으로 링크한다
 
 ```markdown
