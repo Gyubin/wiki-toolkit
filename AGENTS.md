@@ -9,8 +9,9 @@ for the code map and `docs/superpowers/` for the design history (ExecPlans).
 - `wiki mcp <vault>` exposes the same 19 tools over stdio for Claude Code: `claude mcp add wiki -- uv run --directory <this repo> wiki mcp <vault>`.
 - **The vault lives outside this repo.** Every `wiki` subcommand resolves the vault as: explicit path arg > `$WIKI_VAULT` > cwd (`resolve_vault` in `__main__.py`). Point it at your vault, e.g. `uv run wiki lint "$WIKI_VAULT"`. This repo holds **code only**.
 - **검색 임베딩은 기본이 OpenAI API다.** `search`와 `search_wiki`는 `OPENAI_API_KEY`가 필요하다(없으면
-  CLI는 안내 + exit 2). 오프라인이나 전량 로컬이 필요하면 `WIKI_EMBED_PROVIDER=local`
-  (fastembed, 첫 실행에 가중치 2.1GB 다운로드). `sensitivity: confidential` 문서 본문만 원격 임베딩에서
+  CLI는 안내 + exit 2; 네트워크 등 일시적 장애면 BM25 결과로 강등된다). 오프라인이나 전량 로컬이
+  필요하면 `WIKI_EMBED_PROVIDER=local` (fastembed, 첫 실행에 가중치 2.1GB 다운로드).
+  `sensitivity: confidential` 문서 본문과 ingest 전의 id 없는 Inbox 클립만 원격 임베딩에서
   제외된다(BM25로는 검색됨). 키와 설정은 셸 export 또는 repo 루트 `.env`(gitignore, `.env.example` 참조).
 - **여기에 에이전트는 없다.** 웹 앱과 SDK 에이전트 계층은 2026-08-25에 지웠다 (`e7387fb`). 이 repo는 vault 로직(`core/`)과 그것을 MCP 도구로 노출하는 껍데기(`tools.py`, `__main__.py`)뿐이다. 에이전트는 이 도구들을 물고 있는 Claude Code다. 절차는 `wiki_toolkit/prompts/*.md`에 있고 **아무도 자동으로 붙여주지 않는다.** 작업 전에 해당 파일을 직접 읽는다.
 

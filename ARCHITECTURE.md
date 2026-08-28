@@ -47,12 +47,16 @@ violation fails the test, not a code review.
 - `core/projects.py` — `01_Projects/<repo>/` session summaries and ADRs.
 - `core/lint.py` — deterministic, report-only vault hygiene checks.
 - `core/pipeline.py` — `vault_state`/`next_step`: 파이프라인에서 사람을 기다리는 지점 하나를 계산.
-  ingest 대기 > `status: unverified` claim > wiki page 미승격 verified > 복습 도래 순으로 하나만
-  돌려준다. claim은 폴더가 아니라 status로 센다 (`accepted_for_now`와 `partially_true`도
+  ingest 대기 > ingest 끝난 클립 원본 삭제 대기 > `status: unverified` claim > wiki page 미승격
+  (인용 가능 status: verified/attributed/accepted_for_now/partially_true) > 복습 도래 순으로
+  하나만 돌려준다. claim은 폴더가 아니라 status로 센다 (`accepted_for_now`와 `partially_true`도
   `pending/`에 살기 때문에 폴더를 세면 검토가 끝난 뒤에도 계속 남았다고 보고한다).
+  깨진(YAML 파싱 불가) 클립도 ingest 대기로 센다.
 - `core/search.py` — hybrid BM25(한글 2-gram) + embedding search, RRF fusion. 임베딩은 기본이 OpenAI
   Embeddings API(`text-embedding-3-large`)이고, `WIKI_EMBED_PROVIDER=local`이면 fastembed로 로컬 실행(e5 접두사);
-  injectable embedder; 벡터 디스크 캐시 + vault 지문 기반 인덱스 무효화.
+  injectable embedder; 벡터 디스크 캐시(파일명에 provider/모델/dim) + vault 지문 기반 인덱스 무효화.
+  임베딩 입력은 16,000자에서 절단하고, HTTP 400 배치는 항목별로 반씩 줄여 소생시키며(최후엔
+  0 벡터 = BM25 전용), 일시적 실패(`EmbeddingUnavailable`)면 IndexCache가 BM25 전용으로 강등한다.
   env: `WIKI_EMBED_PROVIDER`(openai|local, 기본 openai), `OPENAI_API_KEY`, `WIKI_EMBED_MODEL`,
   `WIKI_EMBED_DIM`, `WIKI_OPENAI_BASE_URL`, `WIKI_EMBED_SEND_SENSITIVE`, `WIKI_EMBED_CACHE`.
 - `tools.py` — `@tool` wrappers + `build_wiki_tools`(도구 목록) / `build_wiki_server`(MCP 래핑);
@@ -89,8 +93,11 @@ violation fails the test, not a code review.
   claim 파일을 손으로 고칠 수 있다. 규칙이지 코드가 아니다.
 - **No second "work vault."** Work/confidential content lives in the same vault under `01_Projects/<repo>/`, distinguished by a `sensitivity` frontmatter tag — not refused.
 - **임베딩은 기본적으로 외부 API를 탄다 (2026-08-25 변경).** 문서 본문이 OpenAI Embeddings API로 나간다.
-  `sensitivity: work`도 보낸다(사용자 결정). `confidential`만 안 보내고 BM25(로컬)로만 검색된다
-  (`WIKI_EMBED_SEND_SENSITIVE=1`로 해제). 전부 로컬로 돌리려면 `WIKI_EMBED_PROVIDER=local`.
+  `sensitivity: work`도 보낸다(사용자 결정). `confidential`과 **ingest 전의 id 없는 Inbox 클립**만
+  안 보내고 BM25(로컬)로만 검색된다 (`WIKI_EMBED_SEND_SENSITIVE=1`로 해제). 클립을 제외하는 이유:
+  민감도는 ingest 때 부여되므로, 태그가 없는 pre-ingest 구간이 정확히 confidential이 새는 창이다.
+  claim은 source의 최고 민감도를 상속한다 (`tools.create_claim` + `sources.max_sensitivity`).
+  전부 로컬로 돌리려면 `WIKI_EMBED_PROVIDER=local`.
 - **No conversation memory.** Durable state = vault Markdown files + git history (쓰기마다 자동 커밋).
 
 ## 지운 것 (2026-08-25, `e7387fb`)

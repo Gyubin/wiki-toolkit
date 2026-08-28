@@ -7,6 +7,8 @@ changed one word across four clips. Nothing in the vault caught it: the quotes w
 with the same flattening, so they matched the drifted source and `quote_not_in_source` stayed
 quiet. It surfaced only by diffing against the original clip bytes, which had been committed
 before ingest. Keep the clip in git until ingest is done, so that comparison stays possible.
+If a capture did drift, restore it with update_source_raw (content_path pointing at the
+committed original), never by hand-editing the source file.
 Pass `content` only for text you are composing yourself, such as a short pasted note.
 
 Also pass `title`: a short human-readable name for the piece, which becomes the filename.
@@ -22,7 +24,8 @@ create each claim with create_claim, always passing source_refs with the source 
 unverified). Suggest a proposed_status only. Never mark anything verified. Record the triage decision.
 
 A Web Clipper drop lands in `00_Inbox/browser-clips/` and carries its own frontmatter. Map it by
-hand: `source` is the url, `sensitivity` is the sensitivity (assume `personal` if the key is absent),
+hand: the url lives in the `url` key (docs/web-clipper-setup.md's template writes `url: {{url}}`),
+`sensitivity` is the sensitivity (assume `personal` if the key is absent),
 origin is `browser`. **No code reads those keys.** The clipper writes them and you are the only
 reader, so a work document marked `confidential` stays out of the embedding API only if you actually
 pass the value through. The clip's `title`, `author`, and `published` have no home in the source
