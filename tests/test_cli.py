@@ -157,3 +157,21 @@ def test_env_file_path_defaults_to_repo_root(monkeypatch):
     p = cli.env_file_path()
     assert p.name == ".env"
     assert (p.parent / "pyproject.toml").exists()  # repo 루트
+
+
+def test_search_degrades_to_bm25_when_api_is_unreachable(vault, monkeypatch, capsys):
+    """일시적 임베딩 장애(네트워크, 5xx 소진)는 검색을 죽이지 말고 BM25로 강등한다.
+    설정 오류(키 없음/거부)는 위 테스트대로 안내 + exit 2를 유지한다."""
+    calls = []
+
+    def fake_build_index(path, embed_fn=None, vec_cache=None):
+        calls.append(embed_fn)
+        if embed_fn is None:
+            raise cli.search_core.EmbeddingUnavailable("연결하지 못했다")
+        return _Idx()
+
+    monkeypatch.setattr(cli.search_core, "build_index", fake_build_index)
+    monkeypatch.setattr(cli.sys, "argv", ["wiki", "search", str(vault), "질의"])
+    cli.main()  # SystemExit 없이 끝나야 한다
+    assert "BM25" in capsys.readouterr().out
+    assert len(calls) == 2 and calls[1] is not None

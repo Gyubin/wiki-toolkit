@@ -22,6 +22,18 @@ from .. import schema
 
 _INCLUDE = ("00_Inbox", "01_Projects", "02_Areas", "03_Resources", "10_Claims", "30_Learning")
 _RRF_K = 60
+# 임베딩에 보내는 본문 상한 (문자). 상한 없이 보내면 8k 토큰 넘는 문서 하나가 HTTP 400으로
+# 인덱스 빌드 전체를 죽이고, 그 문서는 캐시에 못 들어가서 이후 모든 검색이 같은 지점에서
+# 죽는다. BM25는 전체 본문을 계속 본다.
+_EMBED_MAX_CHARS = 16000
+
+
+class EmbeddingUnavailable(RuntimeError):
+    """일시적 임베딩 실패 (네트워크 불통, 429/5xx 재시도 소진).
+
+    설정 오류(키 없음, 키 거부)와 구분한다: 설정 오류는 사용자가 고쳐야 하므로 안내하고
+    멈추는 게 맞고, 일시적 실패는 BM25 전용으로 강등해 검색을 살려두는 게 맞다.
+    """
 # fastembed의 multilingual e5는 large뿐이다 (small/base 미지원, 2026-08 확인)
 _DEFAULT_LOCAL_MODEL = "intfloat/multilingual-e5-large"
 _DEFAULT_OPENAI_MODEL = "text-embedding-3-large"
@@ -113,9 +125,13 @@ def iter_docs(vault: Path) -> list[dict]:
         ref = meta.get("id") or meta.get("name") or str(p.relative_to(vault))
         head = " ".join(str(meta.get(k, "")) for k in ("title", "name", "claim", "topic"))
         text = f"{head}\n{body}".strip()
+        rel = str(p.relative_to(vault))
         docs.append({"ref": str(ref), "title": str(title), "text": text,
-                     "path": str(p.relative_to(vault)),
-                     "sensitivity": str(meta.get("sensitivity") or "")})
+                     "path": rel,
+                     "sensitivity": str(meta.get("sensitivity") or ""),
+                     # ingest 전의 클립: sensitivity가 아직 없어서 confidential 차단에
+                     # 안 걸린다. 민감도가 부여되기 전에는 원격으로 보내지 않는다.
+                     "pre_ingest": rel.startswith("00_Inbox") and not meta.get("id")})
     return docs
 
 
@@ -171,7 +187,11 @@ class VecCache:
 
 
 def _default_vec_cache() -> VecCache:
-    safe = re.sub(r"[^A-Za-z0-9._-]+", "-", f"{embed_provider()}-{embed_model_name()}")
+    # WIKI_EMBED_DIM도 파일명에 넣는다. 안 넣으면 차원을 바꿨을 때 문서 벡터는 전부
+    # 구 차원 캐시에서 오고 쿼리만 새 차원이라 행렬곱에서 죽는다 (감사에서 재현됨).
+    dim = (os.environ.get("WIKI_EMBED_DIM") or "").strip()
+    tag = f"{embed_provider()}-{embed_model_name()}" + (f"-{dim}d" if dim else "")
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "-", tag)
     return VecCache(Path(_embed_cache_dir()) / f"vecs-{safe}.json")
 
 
@@ -218,9 +238,12 @@ def _competition_ranks(scores) -> list[int]:
 class SearchIndex:
     """prefixes는 (문서 접두사, 질의 접두사). 주입된 embed_fn에는 e5 기본값을 유지한다.
 
-    skip_sensitivities에 걸린 문서는 embed_fn을 아예 타지 않고 0 벡터를 받는다.
-    코사인 기여가 0이 되므로 BM25 신호만으로 순위에 들어온다 (검색에서 사라지지 않는다).
+    skip_sensitivities에 걸린 문서와 (원격 차단 맥락에서) ingest 전의 클립은 embed_fn을
+    아예 타지 않고 0 벡터를 받는다. 코사인 기여가 0이 되므로 BM25 신호만으로 순위에
+    들어온다 (검색에서 사라지지 않는다).
     """
+
+    degraded = False  # IndexCache가 임베딩 실패로 BM25 전용으로 강등했을 때 True
 
     def __init__(self, docs: list[dict], embed_fn, vec_cache: VecCache | None = None,
                  prefixes: tuple[str, str] = _E5_PREFIXES,
@@ -232,9 +255,14 @@ class SearchIndex:
         # 전 문서가 빈 토큰이면 BM25Okapi가 ZeroDivisionError로 죽는다
         self._bm25 = BM25Okapi(token_lists) if any(token_lists) else None
         blocked = set(skip_sensitivities)
+        # blocked가 비어 있으면 원격 차단 맥락이 아니다 (로컬 provider, 주입 embedder,
+        # WIKI_EMBED_SEND_SENSITIVE=1). 그때는 pre_ingest도 임베딩한다.
         sent = [i for i, d in enumerate(docs)
-                if str(d.get("sensitivity") or "") not in blocked]
-        vecs = _embed_texts([prefixes[0] + docs[i]["text"] for i in sent], embed_fn, vec_cache)
+                if not (blocked and (str(d.get("sensitivity") or "") in blocked
+                                     or d.get("pre_ingest")))]
+        vecs = _embed_texts(
+            [prefixes[0] + docs[i]["text"][:_EMBED_MAX_CHARS] for i in sent],
+            embed_fn, vec_cache)
         self._doc_mat = None
         if vecs:
             dim = max(len(v) for v in vecs)
@@ -305,7 +333,7 @@ def _openai_embed_batch(client: httpx.Client, key: str, model: str,
             resp = client.post("/embeddings", json=payload, headers=headers)
         except httpx.HTTPError as e:
             if last:
-                raise RuntimeError(
+                raise EmbeddingUnavailable(
                     f"임베딩 API에 연결하지 못했다 ({type(e).__name__}: {e}). "
                     f"네트워크를 확인하거나 WIKI_EMBED_PROVIDER=local로 로컬 임베딩을 써라.") from e
             time.sleep(2 ** attempt)
@@ -318,7 +346,10 @@ def _openai_embed_batch(client: httpx.Client, key: str, model: str,
                 f"임베딩 API가 키를 거부했다 (HTTP {resp.status_code}). OPENAI_API_KEY를 확인해라 "
                 f"(.env 또는 셸 export). 로컬로 돌리려면 WIKI_EMBED_PROVIDER=local.")
         if resp.is_error:
-            raise RuntimeError(
+            # 429/5xx 재시도 소진은 일시적 실패로 분류한다 (BM25 강등 대상)
+            err = EmbeddingUnavailable if resp.status_code in _OPENAI_RETRY_STATUS \
+                else RuntimeError
+            raise err(
                 f"임베딩 API가 HTTP {resp.status_code}를 돌려줬다: {resp.text[:300]}")
         rows = sorted(resp.json()["data"], key=lambda r: r["index"])
         if len(rows) != len(batch):
@@ -326,6 +357,36 @@ def _openai_embed_batch(client: httpx.Client, key: str, model: str,
                 f"embedding API가 입력 {len(batch)}개에 벡터 {len(rows)}개를 돌려줬다")
         return [[float(x) for x in r["embedding"]] for r in rows]
     raise RuntimeError("embedding API 재시도 소진")  # 도달 불가: 마지막 시도는 raise/return
+
+
+def _embed_batch_salvaging(client: httpx.Client, key: str, model: str,
+                           batch: list[str], dim: str | None) -> list[list[float]]:
+    """배치가 HTTP 400이면 항목별로 재시도하고, 항목 단독으로도 400이면 반씩 줄여 살린다.
+
+    토큰 상한을 넘는 문서 하나가 인덱스 빌드 전체를 죽이면, 그 문서는 캐시에 못 들어가서
+    이후 모든 검색이 같은 지점에서 죽는다. 끝까지 안 되는 항목은 빈 벡터로 포기한다
+    (호출자가 0 벡터로 바꿔 BM25 전용으로 검색되게 한다).
+    """
+    try:
+        return _openai_embed_batch(client, key, model, batch, dim)
+    except RuntimeError as e:
+        if isinstance(e, EmbeddingUnavailable) or "HTTP 400" not in str(e):
+            raise
+    out: list[list[float]] = []
+    for item in batch:
+        text = item
+        while True:
+            try:
+                out.append(_openai_embed_batch(client, key, model, [text], dim)[0])
+                break
+            except RuntimeError as e:
+                if isinstance(e, EmbeddingUnavailable) or "HTTP 400" not in str(e):
+                    raise
+                if len(text) <= 512:
+                    out.append([])
+                    break
+                text = text[: len(text) // 2]
+    return out
 
 
 def _openai_embedder():
@@ -345,8 +406,14 @@ def _openai_embedder():
         out: list[list[float]] = []
         with _openai_client() as client:
             for i in range(0, len(items), _OPENAI_BATCH):
-                out.extend(_openai_embed_batch(client, key, model,
-                                               items[i:i + _OPENAI_BATCH], dim))
+                out.extend(_embed_batch_salvaging(client, key, model,
+                                                  items[i:i + _OPENAI_BATCH], dim))
+        # 소생 불가 항목은 성공한 항목들의 차원에 맞춘 0 벡터로 바꾼다.
+        # 코사인 기여 0 = BM25로만 검색 (confidential 문서와 같은 취급).
+        dims = {len(v) for v in out if v}
+        if dims:
+            d0 = max(dims)
+            out = [v if v else [0.0] * d0 for v in out]
         return out
 
     return embed
@@ -394,11 +461,22 @@ class IndexCache:
             self._idx = SearchIndex([], _empty_embedder)
             self._fp = fp
             return self._idx
-        if self._embed_fn is None:
-            self._embed_fn = _default_embedder()
-        prefixes = _E5_PREFIXES if self._injected else embed_prefixes()
-        skip = () if self._injected else remote_blocked_sensitivities()
-        self._idx = SearchIndex(docs, self._embed_fn, self._vec_cache,
-                                prefixes=prefixes, skip_sensitivities=skip)
-        self._fp = fp
+        try:
+            if self._embed_fn is None:
+                self._embed_fn = _default_embedder()
+            prefixes = _E5_PREFIXES if self._injected else embed_prefixes()
+            skip = () if self._injected else remote_blocked_sensitivities()
+            self._idx = SearchIndex(docs, self._embed_fn, self._vec_cache,
+                                    prefixes=prefixes, skip_sensitivities=skip)
+            self._fp = fp
+        except RuntimeError:
+            # 임베딩이 안 된다고 검색 전체가 죽으면 안 된다 (한때는 vault 변경 + 네트워크
+            # 불통이면 로컬 BM25까지 전멸했다). BM25 전용으로 강등하고, 지문을 저장하지
+            # 않아 다음 호출에서 임베딩을 다시 시도한다 (자가 회복).
+            idx = SearchIndex(docs, _empty_embedder)
+            idx.degraded = True
+            self._idx = idx
+            self._fp = None
+            if not self._injected:
+                self._embed_fn = None  # 키를 나중에 넣는 등 설정이 바뀌면 새로 만든다
         return self._idx

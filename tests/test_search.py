@@ -436,3 +436,92 @@ def test_send_sensitive_override_lets_confidential_through(vault, monkeypatch, t
     monkeypatch.setattr(search, "_default_embedder", lambda: recording)
     search.build_index(vault)
     assert any("acme" in t for t in sent)
+
+
+def test_a_poison_doc_becomes_bm25_only_instead_of_killing_the_index(monkeypatch):
+    """토큰 상한을 넘는 문서 하나가 인덱스 빌드 전체를 죽이면, 캐시에 못 들어가서
+    이후 모든 검색이 같은 지점에서 죽는다. 0 벡터로 강등해 BM25 전용으로 살린다."""
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.delenv("WIKI_EMBED_PROVIDER", raising=False)
+    monkeypatch.delenv("WIKI_EMBED_DIM", raising=False)
+
+    def handler(request):
+        body = json.loads(request.content)
+        if any("POISON" in t for t in body["input"]):
+            return httpx.Response(400, json={"error": "input too long"})
+        rows = [{"index": i, "embedding": [1.0, 2.0]}
+                for i, _ in enumerate(body["input"])]
+        return httpx.Response(200, json={"data": rows})
+
+    monkeypatch.setattr(search, "_openai_client", lambda: _mock_client(handler))
+    vecs = search._openai_embedder()(["정상 문서", "POISON " * 200])
+    assert vecs[0] == [1.0, 2.0]
+    assert vecs[1] == [0.0, 0.0]
+
+
+def test_an_oversized_doc_is_salvaged_by_halving(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.delenv("WIKI_EMBED_PROVIDER", raising=False)
+    monkeypatch.delenv("WIKI_EMBED_DIM", raising=False)
+
+    def handler(request):
+        body = json.loads(request.content)
+        if any(len(t) > 5000 for t in body["input"]):
+            return httpx.Response(400, json={"error": "input too long"})
+        rows = [{"index": i, "embedding": [float(len(t))]}
+                for i, t in enumerate(body["input"])]
+        return httpx.Response(200, json={"data": rows})
+
+    monkeypatch.setattr(search, "_openai_client", lambda: _mock_client(handler))
+    vecs = search._openai_embedder()(["short", "x" * 20000])
+    assert vecs[0] == [5.0]
+    assert 0 < vecs[1][0] <= 5000  # 반으로 줄여가며 살렸다
+
+
+def test_vec_cache_filename_includes_the_dimension(monkeypatch):
+    """차원을 바꾸면 새 캐시를 써야 한다. 안 그러면 문서는 구 차원, 쿼리는 새 차원이
+    되어 행렬곱에서 죽는다 (감사에서 재현)."""
+    monkeypatch.delenv("WIKI_EMBED_PROVIDER", raising=False)
+    monkeypatch.delenv("WIKI_EMBED_MODEL", raising=False)
+    monkeypatch.delenv("WIKI_EMBED_DIM", raising=False)
+    base = search._default_vec_cache().path.name
+    monkeypatch.setenv("WIKI_EMBED_DIM", "256")
+    dimmed = search._default_vec_cache().path.name
+    assert base != dimmed and "256" in dimmed
+
+
+def test_pre_ingest_clip_is_not_sent_to_the_remote_embedder():
+    """민감도는 ingest 때 부여된다. 그 전의 클립은 태그가 없어서 confidential 차단에
+    안 걸리므로, 원격 차단 맥락에서는 id 없는 Inbox 문서를 보내지 않는다."""
+    docs = [
+        {"ref": "clip.md", "title": "클립", "text": "은밀한 회사 문서 내용",
+         "path": "00_Inbox/raw/clip.md", "sensitivity": "", "pre_ingest": True},
+        {"ref": "note", "title": "노트", "text": "공개 노트",
+         "path": "03_Resources/note.md", "sensitivity": "personal", "pre_ingest": False},
+    ]
+    seen = []
+
+    def embed(texts):
+        seen.extend(texts)
+        return [[1.0, 0.0] for _ in texts]
+
+    idx = search.SearchIndex(docs, embed, prefixes=("", ""),
+                             skip_sensitivities=("confidential",))
+    assert seen == ["공개 노트"]                 # 클립 본문은 원격으로 안 나갔다
+    out = idx.query("은밀한 회사")
+    assert "clip.md" in {r["ref"] for r in out}  # BM25로는 여전히 찾힌다
+
+
+def test_index_cache_degrades_to_bm25_when_embedding_fails(vault):
+    """vault 변경 + 임베딩 장애가 로컬 BM25까지 죽이면 안 된다."""
+    (vault / "03_Resources/Concepts/rrf.md").write_text(
+        "---\ntype: concept\nname: RRF\n---\n\nRRF는 순위 융합이다\n", encoding="utf-8")
+
+    def boom(texts):
+        raise search.EmbeddingUnavailable("network down")
+
+    cache = search.IndexCache(vault, embed_fn=boom)
+    idx = cache.get()
+    assert idx.degraded is True
+    out = idx.query("순위 융합")
+    assert out and out[0]["ref"] == "RRF"

@@ -122,6 +122,12 @@ def main() -> None:
         vault = _require_vault(resolve_vault(explicit))
         try:
             idx = search_core.build_index(vault)
+        except search_core.EmbeddingUnavailable as e:
+            # 일시적 실패(네트워크, 5xx 소진)는 검색을 죽이지 말고 BM25로 강등한다.
+            # 설정 오류(키 없음/거부)는 아래에서 지금처럼 안내 + exit 2.
+            print(f"(임베딩 불가, BM25 결과만 보여준다: {e})")
+            idx = search_core.build_index(vault, embed_fn=search_core._empty_embedder,
+                                          vec_cache=None)
         except RuntimeError as e:  # 임베딩 provider 설정 문제는 트레이스백 없이 안내한다
             print(str(e))
             sys.exit(2)
