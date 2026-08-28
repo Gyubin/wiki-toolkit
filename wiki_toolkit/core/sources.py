@@ -84,6 +84,7 @@ def find_source(vault: Path, source_id: str) -> Path:
     source 파일명은 사람이 읽을 제목으로 바뀔 수 있다 (그래야 Obsidian 그래프와 파일
     탐색기에서 읽힌다). 파일명으로만 찾으면 그 순간 update_source_raw가 파일을 못 찾는다.
     """
+    schema.validate_doc_id(source_id, "source")
     base = Path(vault) / "00_Inbox"
     for p in base.rglob(f"{source_id}.md"):
         return p
@@ -94,7 +95,28 @@ def find_source(vault: Path, source_id: str) -> Path:
             continue
         if meta.get("id") == source_id:
             return p
-    raise FileNotFoundError(source_id)
+    raise FileNotFoundError(f"no such source: {source_id} (searched 00_Inbox)")
+
+
+def max_sensitivity(vault: Path, source_ids: list[str] | None) -> str:
+    """참조된 source들 중 가장 민감한 값. claim이 source의 민감도를 상속할 때 쓴다.
+
+    claim은 원문 인용을 verbatim으로 담으므로, confidential source에서 나온 claim이
+    personal로 태어나면 그 인용문이 임베딩 API로 나간다 (감사 발견). 없는 id나
+    id 모양이 아닌 자유 텍스트 출처는 건너뛴다.
+    """
+    rank = {s: i for i, s in enumerate(schema.SENSITIVITIES)}
+    best = "personal"
+    for sid in source_ids or []:
+        try:
+            meta, _ = schema.parse_doc(
+                find_source(vault, str(sid)).read_text(encoding="utf-8"))
+        except (FileNotFoundError, ValueError, OSError):
+            continue
+        s = str(meta.get("sensitivity") or "personal")
+        if rank.get(s, 0) > rank[best]:
+            best = s
+    return best
 
 
 def update_source_raw(vault: Path, source_id: str, *, content: str, reason: str) -> Path:
@@ -133,6 +155,9 @@ def update_source_raw(vault: Path, source_id: str, *, content: str, reason: str)
 def triage_record(vault: Path, source_id: str, decision: str, date_str: str) -> None:
     if decision not in ("drop", "keep-as-link", "deep"):
         raise ValueError(f"unknown triage decision: {decision}")
+    # id를 한 자리 잘못 치면 없는 source에 대한 triage가 조용히 남고, 진짜 source는
+    # triage 없이 지나간다. 이를 잡는 소비자가 없으므로 여기서 존재를 확인한다.
+    find_source(vault, source_id)
     index.append_log(vault, "ingest-log", f"triage {source_id} -> {decision}")
 
 

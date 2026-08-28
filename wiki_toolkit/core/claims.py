@@ -16,11 +16,22 @@ _STATUS_DIR = {
 
 
 def _find_file(vault: Path, claim_id: str) -> Path:
-    for sub in set(_STATUS_DIR.values()):
+    schema.validate_doc_id(claim_id, "claim")
+    # 고정 순서 순회: 손상으로 두 상태 폴더에 사본이 생겨도 세션마다 같은 파일을 집는다
+    for sub in sorted(set(_STATUS_DIR.values())):
         p = Path(vault) / "10_Claims" / sub / f"{claim_id}.md"
         if p.exists():
             return p
-    raise FileNotFoundError(claim_id)
+    raise FileNotFoundError(f"no such claim: {claim_id} (searched 10_Claims/*)")
+
+
+def has_written_evidence(refs: list[str] | None) -> bool:
+    """공백뿐인 evidence_refs는 근거가 아니다.
+
+    verified 게이트와 lint의 verified_without_evidence가 같은 판정을 써야 한다.
+    truthiness만 보면 [""]가 게이트를 통과하고 lint도 침묵한다 (감사에서 재현됨).
+    """
+    return bool(refs) and any(str(r).strip() for r in refs)
 
 
 def normalize_key(text: str, speaker: str | None = None) -> str:
@@ -75,6 +86,8 @@ def create_claim(
     원문 표현으로 찾아도 claim이 나온다.
     """
     schema.validate_claim_type(claim_type)
+    if sensitivity not in schema.SENSITIVITIES:
+        raise ValueError(f"unknown sensitivity: {sensitivity}")
     cid = schema.make_id("claim", date_str, seq)
     meta = {
         "type": "claim", "id": cid, "claim_type": claim_type,
@@ -153,9 +166,10 @@ def promote_claim(
     예: evidence_refs=["2026-08-25 본인 확인: 원문 3문단과 대조"]
     """
     schema.validate_status(target_status)
-    if target_status == "verified" and not evidence_refs:
+    if target_status == "verified" and not has_written_evidence(evidence_refs):
         raise PermissionError(
-            "verified requires evidence_refs (design principle 9)"
+            "verified requires evidence_refs with actual text (design principle 9); "
+            "blank strings do not count"
         )
     src = _find_file(vault, claim_id)
     meta, body = schema.parse_doc(src.read_text(encoding="utf-8"))
@@ -196,6 +210,10 @@ def list_pending(vault: Path) -> list[dict]:
         meta, _ = schema.parse_doc(p.read_text(encoding="utf-8"))
         if not meta.get("id"):
             continue  # 손상 파일 하나가 목록 전체를 죽이면 안 된다 (lint가 보고한다)
+        if meta.get("status") != "unverified":
+            # accepted_for_now와 partially_true는 이 폴더에 살지만 검토는 끝났다.
+            # 폴더를 세면 방금 끝낸 검토를 영원히 남았다고 보고한다 (pipeline과 같은 교훈).
+            continue
         rows.append({"id": meta["id"], "claim": meta.get("claim", ""),
                      "claim_type": meta.get("claim_type", ""),
                      "proposed_status": meta.get("proposed_status", "")})

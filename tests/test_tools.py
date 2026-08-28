@@ -241,3 +241,85 @@ async def test_update_wiki_page_rejects_both_body_and_body_path(vault, tmp_path)
     with pytest.raises(ValueError, match="at most one"):
         await h["update_wiki_page"].handler({
             "path": "03_Resources/Concepts/임베딩-모델.md", "body": "x", "body_path": str(f)})
+
+
+async def test_create_source_returns_the_source_id(vault):
+    """반환에 id가 없으면 다음 호출 전부(triage, source_refs, 검토표)가 grep으로
+    id를 되찾아야 하고, 병렬 ingest에서 기억으로 짝지으면 claim이 엉뚱한 source에 붙는다."""
+    h = {t.name: t for t in tools.build_wiki_tools(vault)}
+    out = await h["create_source"].handler({
+        "origin": "browser", "content": "본문 " * 200,
+        "title": "Agent Lightning v1.0", "url": "http://x"})
+    text = out["content"][0]["text"]
+    assert "created source-" in text
+    assert "(Agent Lightning v1.0)" in text
+
+
+async def test_triage_result_names_the_source_and_decision(vault):
+    h = {t.name: t for t in tools.build_wiki_tools(vault)}
+    created = await h["create_source"].handler({"origin": "browser", "content": "본문 " * 200})
+    sid = next(w for w in created["content"][0]["text"].split() if w.startswith("source-"))
+    out = await h["triage_record"].handler({"source_id": sid, "decision": "deep"})
+    text = out["content"][0]["text"]
+    assert sid in text and "deep" in text
+
+
+async def test_claims_inherit_the_source_sensitivity(vault):
+    """confidential source의 원문 인용을 담은 claim이 personal로 태어나면
+    그 인용문이 임베딩 API로 나간다. source의 민감도를 상속해야 한다."""
+    from wiki_toolkit import schema
+    h = {t.name: t for t in tools.build_wiki_tools(vault)}
+    created = await h["create_source"].handler({
+        "origin": "browser", "content": "사내 문서 " * 100, "sensitivity": "confidential"})
+    sid = next(w for w in created["content"][0]["text"].split() if w.startswith("source-"))
+    await h["create_claim"].handler({
+        "claim": "사내 규칙이 있다", "claim_type": "technical_fact",
+        "source_refs": [sid], "quote": "사내 문서"})
+    f = next((vault / "10_Claims/pending").glob("claim-*.md"))
+    meta, _ = schema.parse_doc(f.read_text(encoding="utf-8"))
+    assert meta["sensitivity"] == "confidential"
+
+
+def _git_vault_for_tools(vault):
+    import subprocess
+    for a in (["init"], ["config", "user.email", "t@t"], ["config", "user.name", "t"]):
+        subprocess.run(["git", "-C", str(vault), *a], check=True, capture_output=True)
+
+
+async def test_write_tools_commit_the_vault(vault):
+    """감사 추적의 실체: git vault에서 쓰기 도구가 실제로 커밋을 남긴다.
+
+    기존 도구 테스트는 전부 git 아닌 vault라 commit_vault가 no-op이었고,
+    _done에서 커밋 호출을 지워도 suite가 초록이었다 (감사 발견).
+    """
+    import subprocess
+    _git_vault_for_tools(vault)
+    h = {t.name: t for t in tools.build_wiki_tools(vault)}
+    res = await h["create_claim"].handler({"claim": "주장", "claim_type": "opinion"})
+    assert "경고" not in res["content"][0]["text"]
+    log = subprocess.run(["git", "-C", str(vault), "log", "--format=%s"],
+                         capture_output=True, text=True).stdout
+    assert any(line.startswith("wiki: created claim-") for line in log.splitlines())
+
+
+async def test_commit_failure_is_reported_not_swallowed(vault, monkeypatch):
+    from wiki_toolkit.core import git as git_core
+    _git_vault_for_tools(vault)
+    monkeypatch.setattr(git_core, "commit_vault", lambda *a, **k: False)
+    h = {t.name: t for t in tools.build_wiki_tools(vault)}
+    res = await h["create_claim"].handler({"claim": "주장", "claim_type": "opinion"})
+    text = res["content"][0]["text"]
+    assert "created" in text            # 쓰기는 성공했고
+    assert "자동 커밋이 실패" in text    # 실패는 보인다
+
+
+async def test_collect_git_session_marks_diff_truncation(vault, monkeypatch):
+    """절단 표시가 없으면 세션 요약과 ADR이 뒷부분 파일들의 변경을 조용히 누락한다."""
+    from wiki_toolkit.core import git as git_core
+    monkeypatch.setattr(git_core, "collect_session",
+                        lambda repo, base, head="HEAD": {
+                            "diff": "x" * 25000, "changed_files": ["a.txt"], "commits": []})
+    h = {t.name: t for t in tools.build_wiki_tools(vault)}
+    out = await h["collect_git_session"].handler({"repo": "r", "base": "HEAD~1"})
+    text = out["content"][0]["text"]
+    assert "diff truncated" in text and "25000" in text

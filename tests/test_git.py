@@ -75,3 +75,24 @@ def test_commit_vault_scoped_paths_leave_user_edits_alone(vault):
     status = subprocess.run(["git", "-C", str(vault), "status", "--short"],
                             capture_output=True, text=True).stdout
     assert "my-note.md" in status  # 사용자 편집은 커밋되지 않고 남아 있어야 한다
+
+
+def test_commit_vault_does_not_sweep_user_staged_files(vault):
+    """add만 paths로 한정하고 commit에 pathspec이 없으면, 사용자가 커밋하려고
+    스테이징해 둔 무관한 파일이 에이전트의 감사 커밋에 쓸려 들어간다 (감사 발견)."""
+    _git_vault(vault)
+    git.commit_vault(vault, "seed")
+    staged = vault / "02_Areas" / "staged-by-user.md"
+    staged.write_text("사용자가 add까지 해둔 파일\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(vault), "add", "02_Areas"],
+                   check=True, capture_output=True)
+    (vault / "10_Claims/pending/claim-20260101-001.md").write_text("x", encoding="utf-8")
+    assert git.commit_vault(vault, "wiki: created claim",
+                            paths=["10_Claims", "06_Metadata"]) is True
+    show = subprocess.run(["git", "-C", str(vault), "show", "--name-only", "HEAD"],
+                          capture_output=True, text=True).stdout
+    assert "claim-20260101-001" in show
+    assert "staged-by-user" not in show
+    status = subprocess.run(["git", "-C", str(vault), "status", "--short"],
+                            capture_output=True, text=True).stdout
+    assert "staged-by-user" in status  # 스테이징된 채 그대로 남아 있다

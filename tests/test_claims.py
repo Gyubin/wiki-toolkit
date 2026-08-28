@@ -224,3 +224,47 @@ def test_update_claim_quote_requires_reason_and_content(vault):
 def test_unblockquote_is_the_inverse_of_blockquote():
     text = "첫 줄\n\n셋째 줄"
     assert claims.unblockquote(claims.blockquote(text)) == text
+
+
+def test_verified_gate_rejects_blank_evidence(vault):
+    """[""]가 게이트를 통과하면 "verified는 근거로만"이라는 핵심 불변식이 뚫린다."""
+    p = _make(vault)
+    for refs in ([""], ["   "], [], None):
+        with pytest.raises(PermissionError):
+            claims.promote_claim(vault, p.stem, target_status="verified",
+                                 evidence_refs=refs, date_str="2026-08-28")
+
+
+def test_claim_id_is_validated_before_touching_the_filesystem(vault):
+    """claim_id는 경로에 합류한다. `../`가 vault 밖 파일에 닿으면 안 된다."""
+    for bad in ("../../outside", "claim-*", "*", "claim-2026-01"):
+        with pytest.raises(ValueError):
+            claims.promote_claim(vault, bad, target_status="attributed",
+                                 date_str="2026-08-28")
+
+
+def test_missing_claim_error_says_what_is_missing(vault):
+    """에러 텍스트가 id뿐이면 MCP를 거친 뒤 동사 없는 한 단어가 된다."""
+    with pytest.raises(FileNotFoundError, match="no such claim"):
+        claims.promote_claim(vault, "claim-20260828-999", target_status="attributed",
+                             date_str="2026-08-28")
+
+
+def test_list_pending_counts_status_not_folder(vault):
+    """accepted_for_now는 pending 폴더에 살지만 검토는 끝났다.
+
+    폴더를 세면 방금 끝낸 검토를 영원히 남았다고 보고한다 (pipeline과 같은 교훈,
+    2026-08-28에 실제로 승격 72건 뒤 53건이 계속 pending으로 보고됐다).
+    """
+    a = _make(vault, seq=1, text="아직 검토 전")
+    b = _make(vault, seq=2, text="검토 끝")
+    claims.promote_claim(vault, b.stem, target_status="accepted_for_now",
+                         date_str="2026-08-28")
+    assert (vault / "10_Claims/pending" / f"{b.stem}.md").exists()  # 폴더에는 남는다
+    assert [r["id"] for r in claims.list_pending(vault)] == [a.stem]
+
+
+def test_create_claim_rejects_unknown_sensitivity(vault):
+    with pytest.raises(ValueError, match="sensitivity"):
+        claims.create_claim(vault, claim="주장", claim_type="opinion", source_refs=[],
+                            date_str="2026-08-28", seq=9, sensitivity="secret")

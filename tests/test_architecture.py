@@ -106,6 +106,17 @@ def test_imports_flow_upward_only():
     assert not offenders, offenders
 
 
+def test_every_module_is_classified_in_the_layer_map():
+    """새 최상위 모듈이 _LAYER에 없으면 위의 방향 검사에서 통째로 면제된다.
+
+    agent.py 같은 파일을 되살리면(ARCHITECTURE의 "지운 것" 절이 상정하는 시나리오)
+    여기서 먼저 걸린다. _LAYER에 자리를 정해야 그 파일에도 검사가 적용된다.
+    """
+    stems = {_layer_of(f) for f in PKG_ROOT.rglob("*.py")}
+    unknown = sorted(stems - set(_LAYER))
+    assert not unknown, f"add these modules to _LAYER in this file: {unknown}"
+
+
 def test_checker_catches_violation():
     assert "claude_agent_sdk" in core_violations(
         "from claude_agent_sdk import tool\nfrom .. import schema\n", "wiki_toolkit.core")

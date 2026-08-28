@@ -31,3 +31,13 @@ def test_log_lines_contain_no_em_dash(vault):
     index.append_log(vault, "ingest-log", "captured something")
     text = (vault / "06_Metadata/logs/ingest-log.md").read_text(encoding="utf-8")
     assert "—" not in text
+
+
+def test_update_index_flattens_newlines(vault):
+    """줄 단위 upsert에서 두 줄짜리 항목은 둘째 줄이 고아로 영원히 남는다 (감사에서 재현)."""
+    index.update_index(vault, "claim-index", "claim-20260828-001",
+                       "첫 줄\n둘째 줄 - unverified")
+    index.update_index(vault, "claim-index", "claim-20260828-001", "갱신된 줄 - attributed")
+    text = (vault / "06_Metadata/indexes/claim-index.md").read_text(encoding="utf-8")
+    assert "둘째 줄" not in text
+    assert text.count("claim-20260828-001") == 1

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as _dt
+import re
 
 import yaml
 
@@ -25,6 +26,23 @@ def today_str() -> str:
 def make_id(prefix: str, date_str: str, seq: int) -> str:
     compact = date_str.replace("-", "")
     return f"{prefix}-{compact}-{seq:03d}"
+
+
+# id "모양" 판정 (lint의 dangling_ref 등이 쓴다)
+ID_SHAPED = re.compile(r"^(?:source|claim|session|decision|learning)-\d{8}-\d+$")
+
+
+def validate_doc_id(doc_id: str, prefix: str) -> str:
+    """경로나 glob 패턴에 합류하는 id 인자는 먼저 이 관문을 거친다.
+
+    update_wiki_page는 03_Resources 밖을 명시적으로 막는데(tools.resolve_wiki_page_path),
+    id로 파일을 찾는 도구들에는 대응 장치가 없었다. claim_id의 `../..`가 vault 밖 파일에
+    닿고 source_id의 `*`가 rglob에서 임의 파일에 매치되는 것을 여기서 끊는다.
+    """
+    if not re.fullmatch(rf"{re.escape(prefix)}-\d{{8}}-\d+", str(doc_id)):
+        raise ValueError(
+            f"not a valid {prefix} id: {doc_id!r} (expected {prefix}-YYYYMMDD-NNN)")
+    return doc_id
 
 
 def render_doc(meta: dict, body: str) -> str:

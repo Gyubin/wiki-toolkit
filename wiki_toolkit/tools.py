@@ -116,8 +116,13 @@ def build_wiki_tools(vault: Path) -> list:
     def _done(text: str, paths: list[str]) -> dict:
         # 쓰기 도구 공통: 감사 추적용 vault 자동 커밋 (git repo 아니면 무동작).
         # paths로 스테이징을 한정해 사용자의 무관한 수동 편집을 쓸어 담지 않는다.
-        git.commit_vault(vault, f"wiki: {text}", paths=[*paths, "06_Metadata"])
-        return _ok(_with_next_step(text))
+        committed = git.commit_vault(vault, f"wiki: {text}", paths=[*paths, "06_Metadata"])
+        out = _with_next_step(text)
+        if not committed and (vault / ".git").exists():
+            # 커밋 실패를 조용히 삼키면 감사 추적이 끊긴 채 쓰기가 쌓이고, 나중에 다른
+            # 커밋이 엉뚱한 메시지로 쓸어 담는다. 쓰기는 비차단, 실패는 보이게.
+            out += "\n(경고: vault 자동 커밋이 실패했다. vault의 git 상태를 확인해라)"
+        return _ok(out)
 
     @tool("create_source",
           "Capture a raw clip as a source in the Inbox. Pass content_path (a file) "
@@ -129,21 +134,28 @@ def build_wiki_tools(vault: Path) -> list:
                   {"content": _STR, "content_path": _STR, "sensitivity": _STR,
                    "url": _STR, "title": _STR}))
     async def create_source(args):
+        today = schema.today_str()
+        seq = ids.next_seq(vault, "source", today, ["00_Inbox"])
+        sid = schema.make_id("source", today, seq)
         p = sources.create_source(
             vault, origin=args["origin"], content=resolve_content(args),
             sensitivity=args.get("sensitivity", "personal"),
             title=args.get("title"),
-            date_str=schema.today_str(),
-            seq=ids.next_seq(vault, "source", schema.today_str(), ["00_Inbox"]),
+            date_str=today, seq=seq,
             url=args.get("url"),
         )
-        return _done(f"created {p.stem}", ["00_Inbox"])
+        # id를 반환에 넣는다. 파일명(사람이 읽는 제목)만 돌려주면 다음 호출 전부
+        # (triage_record, create_claim의 source_refs, 검토표)가 요구하는 id를 grep으로
+        # 되찾아야 한다. 병렬 ingest에서 기억으로 짝지으면 claim이 엉뚱한 source에 붙는다.
+        name = f" ({p.stem})" if p.stem != sid else ""
+        return _done(f"created {sid}{name}", ["00_Inbox"])
 
-    @tool("triage_record", "Record a triage decision (drop|keep-as-link|deep)",
+    @tool("triage_record", "Record a triage decision (drop|keep-as-link|deep) "
+          "for an existing source id",
           {"source_id": str, "decision": str})
     async def triage_record(args):
         sources.triage_record(vault, args["source_id"], args["decision"], schema.today_str())
-        return _done("recorded", [])
+        return _done(f"recorded triage {args['source_id']} -> {args['decision']}", [])
 
     @tool("update_source_raw",
           "Rewrite a source's ## Raw body; frontmatter is untouched. Requires a reason. "
@@ -169,19 +181,26 @@ def build_wiki_tools(vault: Path) -> list:
     @tool("create_claim", "Create an atomic claim (always unverified). "
           "Always pass source_refs so the claim stays source-linked, and quote with the "
           "source passage this claim came from, copied verbatim (do not summarize or "
-          "translate it) so the claim can be checked without reopening the source.",
+          "translate it) so the claim can be checked without reopening the source. "
+          "Sensitivity is inherited from the most sensitive referenced source unless "
+          "passed explicitly.",
           _schema({"claim": _STR, "claim_type": _STR},
                   {"source_refs": _STR_LIST, "proposed_status": _STR, "speaker": _STR,
-                   "quote": _STR}))
+                   "quote": _STR, "sensitivity": _STR}))
     async def create_claim(args):
+        refs = args.get("source_refs", [])
+        # claim은 원문 인용을 담으므로 source의 민감도를 상속해야 한다. 안 그러면
+        # confidential source의 인용문이 personal claim에 실려 임베딩 API로 나간다.
+        sens = args.get("sensitivity") or sources.max_sensitivity(vault, refs)
         p = claims.create_claim(
             vault, claim=args["claim"], claim_type=args["claim_type"],
-            source_refs=args.get("source_refs", []), date_str=schema.today_str(),
+            source_refs=refs, date_str=schema.today_str(),
             seq=ids.next_seq(vault, "claim", schema.today_str(), ["10_Claims"]),
             proposed_status=args.get("proposed_status"), speaker=args.get("speaker"),
-            quote=args.get("quote"),
+            quote=args.get("quote"), sensitivity=sens,
         )
-        return _done(f"created {p.stem} (unverified)", ["10_Claims"])
+        tag = " (unverified)" if sens == "personal" else f" (unverified, {sens})"
+        return _done(f"created {p.stem}{tag}", ["10_Claims"])
 
     @tool("find_similar_claim", "Find duplicate claims by normalized key",
           _schema({"claim": _STR}, {"speaker": _STR}))
@@ -240,6 +259,7 @@ def build_wiki_tools(vault: Path) -> list:
         wiki.update_wiki_page(
             p, body=resolve_optional_body(args),
             add_claim_refs=args.get("add_claim_refs"), status=args.get("status"),
+            date_str=schema.today_str(),
         )
         return _done(f"updated {p.name}", ["03_Resources"])
 
@@ -274,10 +294,16 @@ def build_wiki_tools(vault: Path) -> list:
           _schema({"repo": _STR, "base": _STR}, {"head": _STR}))
     async def collect_git_session(args):
         s = git.collect_session(args["repo"], args["base"], args.get("head", "HEAD"))
+        diff = s["diff"]
+        shown = diff[:20000]
+        if len(diff) > 20000:
+            # 절단을 표시 없이 하면 요약과 ADR이 뒷부분 파일들의 변경을 조용히 누락한다
+            shown += (f"\n[diff truncated: showing 20000 of {len(diff)} chars; "
+                      f"changed_files above is complete]")
         text = (
             "commits:\n" + "\n".join(f"- {c['sha'][:8]} {c['subject']}" for c in s["commits"])
             + "\n\nchanged_files:\n" + "\n".join(s["changed_files"])
-            + "\n\ndiff:\n" + s["diff"][:20000]
+            + "\n\ndiff:\n" + shown
         )
         return _ok(text)
 
@@ -317,9 +343,10 @@ def build_wiki_tools(vault: Path) -> list:
         return _ok("\n".join([
             hint, "",
             f"ingest 대기 클립: {len(s['unstructured_inbox'])}",
+            f"ingest 끝나 삭제만 남은 클립 원본: {len(s['ingested_leftovers'])}",
             f"아직 검토 안 한 claim: {len(s['unverified_claims'])}",
-            f"verified claim: {len(s['verified_claims'])} "
-            f"(그중 wiki page에 안 실림: {len(s['verified_unlinked'])})",
+            f"verified claim: {len(s['verified_claims'])}",
+            f"검토는 끝났는데 wiki page에 안 실린 claim: {len(s['citable_unlinked'])}",
             f"wiki page: {len(s['wiki_pages'])}",
             f"학습카드: {len(s['learning_items'])} (오늘 복습 도래: {len(s['due_reviews'])})",
         ]))
@@ -327,10 +354,15 @@ def build_wiki_tools(vault: Path) -> list:
     @tool("search_wiki", "Hybrid semantic+lexical search over the vault",
           _schema({"query": _STR}, {"k": _INT}))
     async def search_wiki(args):
-        results = await asyncio.to_thread(
-            lambda: _index_cache.get().query(args["query"], int(args.get("k", 8))))
+        def _q():
+            idx = _index_cache.get()
+            return idx, idx.query(args["query"], int(args.get("k", 8)))
+
+        idx, results = await asyncio.to_thread(_q)
         text = "\n".join(f"- [{r['ref']}] {r['title']} (score {r['score']})"
                          for r in results) or "no results"
+        if getattr(idx, "degraded", False):
+            text += "\n(경고: 임베딩을 쓸 수 없어 BM25 결과만이다. 키/네트워크를 확인해라)"
         return _ok(text)
 
     return [create_source, triage_record, update_source_raw, update_claim_quote,

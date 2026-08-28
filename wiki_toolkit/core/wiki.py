@@ -44,6 +44,7 @@ def create_wiki_page(
 def update_wiki_page(
     path: Path, *, body: str | None = None,
     add_claim_refs: list[str] | None = None, status: str | None = None,
+    date_str: str | None = None,
 ) -> Path:
     path = Path(path)
     meta, old_body = schema.parse_doc(path.read_text(encoding="utf-8"))
@@ -55,6 +56,10 @@ def update_wiki_page(
         meta["claim_refs"] = refs
     if status:
         meta["status"] = status
+    if date_str:
+        # 다른 모든 update 경로는 updated를 갱신한다. 여기만 안 하면 frontmatter가
+        # 마지막 변경 시점을 속인다 (Obsidian과 사람이 보는 값이다).
+        meta["updated"] = date_str
     path.write_text(schema.render_doc(meta, body if body is not None else old_body),
                     encoding="utf-8")
     return path

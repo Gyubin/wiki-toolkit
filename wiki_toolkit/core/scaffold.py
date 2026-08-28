@@ -67,13 +67,22 @@ claim_refs: []
 code_refs: []
 ---
 
-## Verified Knowledge
+(리드 문단: 이게 뭐고 왜 보는가. 콘텐츠가 위, vault 운영 정보는 맨 아래 `---` 밑
+`## 근거` 한 곳. 섹션 제목은 전부 내용 제목으로 쓴다. Verified Knowledge 같은 vault
+용어 제목은 쓰지 않는다. 형식 계약의 원본은 코드 repo의 prompts/wiki-page.md.)
 
-(verified claim에 근거한 내용만)
+## <내용 제목>
 
-## Unverified / Notes
+## 한계
 
-(아직 검증 안 된 메모)
+---
+
+## 근거
+
+| 절 | claim |
+| --- | --- |
+
+검증 상태: (근거 claim들의 status 요약 한 줄)
 """,
     "learning-item": """---
 type: learning_item

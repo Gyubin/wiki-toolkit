@@ -36,8 +36,11 @@ def commit_vault(vault: Path, message: str, paths: list[str] | None = None) -> b
             ["git", "-C", str(vault), "add", "-A", "--", *scope],  # noqa: S607
             capture_output=True, check=True,
         )
+        # commit에도 pathspec을 건다. add만 한정하면 사용자가 미리 스테이징해 둔
+        # 무관한 파일이 이 커밋에 쓸려 들어간다 (감사 발견; docstring의 약속 위반).
         r = subprocess.run(  # noqa: S603
-            ["git", "-C", str(vault), "commit", "--no-verify", "-m", message],  # noqa: S607
+            ["git", "-C", str(vault), "commit", "--no-verify",  # noqa: S607
+             "-m", message, "--", *scope],
             capture_output=True,
         )
         return r.returncode == 0

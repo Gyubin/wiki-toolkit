@@ -27,6 +27,8 @@ def test_create_source_tags_work(vault):
 
 
 def test_triage_record(vault):
+    sources.create_source(vault, origin="chatgpt", content="raw text " * 30,
+                          date_str="2026-06-07", seq=1, url="http://x")
     sources.triage_record(vault, "source-20260607-001", "deep", "2026-06-07")
     log = (vault / "06_Metadata/logs/ingest-log.md").read_text(encoding="utf-8")
     assert "triage" in log and "deep" in log
@@ -179,3 +181,31 @@ def test_create_source_rejects_a_title_already_taken(vault):
     with pytest.raises(FileExistsError, match="같은 제목"):
         sources.create_source(vault, origin="browser", content="다른 본문" * 200,
                               date_str="2026-08-28", seq=2, title="같은 제목")
+
+
+def test_triage_record_requires_an_existing_source(vault):
+    """id를 한 자리 잘못 치면 없는 source에 대한 triage가 조용히 남는 버그의 재발 방지."""
+    import pytest
+    with pytest.raises(FileNotFoundError, match="no such source"):
+        sources.triage_record(vault, "source-20260607-999", "deep", "2026-06-07")
+
+
+def test_find_source_rejects_glob_and_traversal(vault):
+    """source_id는 rglob 패턴에 합류한다. `*`와 `../`가 파일 조회에 닿으면 안 된다."""
+    import pytest
+    for bad in ("*", "../outside", "source-*", "source-2026/../x"):
+        with pytest.raises(ValueError):
+            sources.find_source(vault, bad)
+
+
+def test_max_sensitivity_inherits_the_highest(vault):
+    sources.create_source(vault, origin="browser", content="p " * 200,
+                          sensitivity="personal", date_str="2026-08-28", seq=1)
+    sources.create_source(vault, origin="browser", content="c " * 200,
+                          sensitivity="confidential", date_str="2026-08-28", seq=2)
+    both = ["source-20260828-001", "source-20260828-002"]
+    assert sources.max_sensitivity(vault, both) == "confidential"
+    assert sources.max_sensitivity(vault, both[:1]) == "personal"
+    # 없는 id와 id 모양이 아닌 자유 텍스트 출처는 건너뛴다
+    assert sources.max_sensitivity(vault, ["자유 텍스트 출처", "source-20260828-009"]) == "personal"
+    assert sources.max_sensitivity(vault, None) == "personal"

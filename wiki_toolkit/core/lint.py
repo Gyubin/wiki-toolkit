@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 from .. import schema
-from .claims import _STATUS_DIR, extract_quote, normalize_key
+from .claims import _STATUS_DIR, extract_quote, has_written_evidence, normalize_key
 
 _SEV_ORDER = {"error": 0, "warning": 1, "info": 2}
 
@@ -21,7 +21,7 @@ def _f(check: str, severity: str, ref: str, message: str) -> dict:
     return {"check": check, "severity": severity, "ref": ref, "message": message}
 
 
-_ID_SHAPED = re.compile(r"^(?:source|claim|session|decision|learning)-\d{8}-\d+$")
+_ID_SHAPED = schema.ID_SHAPED  # id 모양의 단일 출처는 schema다
 
 # 실패한 캡처는 대개 짧다. 봇월 문구가 있으면 create_source가 아예 막지만, 문구 없이
 # 껍데기만 내려오는 경우가 있어서 여기서 보고한다. 짧은 붙여넣기 메모도 걸리므로
@@ -93,9 +93,11 @@ def run_checks(vault: Path, today_str: str) -> list[dict]:
                                f"found in '{d}'"))
         if not meta.get("source_refs"):
             findings.append(_f("missing_source_refs", "warning", ref, "claim has no source_refs"))
-        if status == "verified" and not meta.get("evidence_refs"):
+        if status == "verified" and not has_written_evidence(meta.get("evidence_refs")):
+            # 게이트(promote_claim)와 같은 판정을 쓴다. truthiness만 보면 [""]가
+            # 게이트를 통과했을 때 여기도 침묵해서 안전망이 같이 뚫린다.
             findings.append(_f("verified_without_evidence", "warning", ref,
-                               "verified claim has no evidence_refs (confirm human-approved)"))
+                               "verified claim has no written evidence_refs"))
 
     groups: dict[str, list[str]] = {}
     for meta in claim_metas:
@@ -113,11 +115,14 @@ def run_checks(vault: Path, today_str: str) -> list[dict]:
                                "wiki page has no claim_refs"))
 
     source_bodies: dict[str, str] = {}
+    inbox_source_urls: set[str] = set()  # ingest 끝난 클립 원본 판정용 (pipeline과 같은 기준)
     for p in (vault / "00_Inbox").rglob("*.md"):
         parsed = _parse_full(p)
         if parsed is None:
             continue  # 아래 전체 순회에서 unparseable로 보고된다
         meta, body = parsed
+        if meta.get("id") and meta.get("url"):
+            inbox_source_urls.add(str(meta["url"]))
         if meta.get("type") != "source":
             continue
         if meta.get("id"):
@@ -164,8 +169,14 @@ def run_checks(vault: Path, today_str: str) -> list[dict]:
             id_files.setdefault(f"{mid}|{scope}", []).append(rel)
         # Web Clipper 유입물은 자체 frontmatter(title 등)는 있어도 wiki 스키마(id)가 없다
         if rel.startswith("00_Inbox") and not mid:
-            findings.append(_f("inbox_unstructured", "info", rel,
-                               "raw clip without source schema (no id); needs ingest"))
+            clip_url = str((meta or {}).get("url") or (meta or {}).get("source") or "")
+            if clip_url and clip_url in inbox_source_urls:
+                findings.append(_f("inbox_ingested_leftover", "info", rel,
+                                   "clip already ingested (url matches a source); "
+                                   "delete the original (git rm)"))
+            else:
+                findings.append(_f("inbox_unstructured", "info", rel,
+                                   "raw clip without source schema (no id); needs ingest"))
         if not meta:
             continue
         for field in ("source_refs", "evidence_refs", "claim_refs"):

@@ -65,3 +65,21 @@ def test_update_wiki_page_adds_claim_refs(vault):
     wiki.update_wiki_page(path, add_claim_refs=["claim-20260607-002"])
     meta, _ = schema.parse_doc(path.read_text(encoding="utf-8"))
     assert "claim-20260607-002" in meta["claim_refs"]
+
+
+def test_update_wiki_page_bumps_updated_and_keeps_the_body(vault):
+    """refs만 갱신해도 본문이 살아야 하고, updated는 갱신돼야 한다.
+
+    본문의 조용한 손실이 이 프로젝트의 공인된 핵심 실패 유형인데, 이 보존 계약은
+    claim/source의 update에는 테스트가 있고 페이지에는 없었다.
+    """
+    p = wiki.create_wiki_page(vault, name="RRF 융합", page_type="concept",
+                              body="본문은 그대로 남아야 한다\n", claim_refs=[],
+                              date_str="2026-08-01")
+    wiki.update_wiki_page(p, add_claim_refs=["claim-20260828-001"], status="reviewed",
+                          date_str="2026-08-28")
+    meta, body = schema.parse_doc(p.read_text(encoding="utf-8"))
+    assert "본문은 그대로 남아야 한다" in body
+    assert str(meta["updated"]) == "2026-08-28"
+    assert str(meta["created"]) == "2026-08-01"
+    assert meta["status"] == "reviewed"

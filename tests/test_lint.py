@@ -220,3 +220,31 @@ def test_quote_not_in_source_skips_claims_without_a_quote(vault):
                         source_refs=["source-20260827-001"], date_str="2026-08-27", seq=1)
     checks = {f["check"] for f in lint.run_checks(vault, "2026-08-27")}
     assert "quote_not_in_source" not in checks
+
+
+def test_verified_with_blank_evidence_is_flagged(vault):
+    """[""]는 근거가 아니다. 게이트가 뚫렸을 때 안전망까지 같이 침묵하면 안 된다."""
+    p = vault / "10_Claims/verified/claim-20260828-001.md"
+    p.write_text(
+        schema.render_doc(
+            {"type": "claim", "id": "claim-20260828-001", "claim_type": "technical_fact",
+             "status": "verified", "claim": "구멍", "speaker": "",
+             "source_refs": ["source-20260828-001"], "evidence_refs": [""],
+             "sensitivity": "personal"},
+            "## Claim\n\n구멍\n"), encoding="utf-8")
+    checks = [f["check"] for f in lint.run_checks(vault, "2026-08-28")
+              if f["ref"] == "claim-20260828-001"]
+    assert "verified_without_evidence" in checks
+
+
+def test_ingested_leftover_clip_is_classified_separately(vault):
+    """ingest 끝난 클립 원본은 "needs ingest"가 아니라 삭제 대기로 보고한다."""
+    (vault / "00_Inbox/browser-clips/clip.md").write_text(
+        "---\ntitle: 글\nurl: http://example.com/a\n---\n\n본문\n", encoding="utf-8")
+    sources.create_source(vault, origin="browser", content="본문 " * 200,
+                          date_str="2026-08-28", seq=1, url="http://example.com/a")
+    rows = [f for f in lint.run_checks(vault, "2026-08-28")
+            if f["ref"].endswith("clip.md")]
+    checks = {f["check"] for f in rows}
+    assert "inbox_ingested_leftover" in checks
+    assert "inbox_unstructured" not in checks

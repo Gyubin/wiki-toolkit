@@ -14,6 +14,9 @@ def append_log(vault: Path, logname: str, line: str) -> None:
 
 
 def update_index(vault: Path, indexname: str, entry_id: str, line: str) -> None:
+    # upsert가 줄 단위라 개행이 든 항목은 다음 갱신에서 첫 줄만 지워지고
+    # 둘째 줄이 고아로 영원히 남는다 (감사에서 재현됨). 개행을 접어 한 줄로 만든다.
+    line = " ".join(str(line).split())
     p = Path(vault) / "06_Metadata/indexes" / f"{indexname}.md"
     p.parent.mkdir(parents=True, exist_ok=True)
     header = p.read_text(encoding="utf-8") if p.exists() else f"# {indexname}\n\n"

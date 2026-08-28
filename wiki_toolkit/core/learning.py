@@ -35,9 +35,10 @@ def create_learning_item(
 
 
 def _find(vault: Path, learning_id: str) -> Path:
+    schema.validate_doc_id(learning_id, "learning")
     for p in (Path(vault) / "30_Learning").rglob(f"{learning_id}.md"):
         return p
-    raise FileNotFoundError(learning_id)
+    raise FileNotFoundError(f"no such learning item: {learning_id} (searched 30_Learning)")
 
 
 def list_due_reviews(vault: Path, today_str: str) -> list[dict]:
