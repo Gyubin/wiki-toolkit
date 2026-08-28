@@ -209,3 +209,70 @@ def test_max_sensitivity_inherits_the_highest(vault):
     # 없는 id와 id 모양이 아닌 자유 텍스트 출처는 건너뛴다
     assert sources.max_sensitivity(vault, ["자유 텍스트 출처", "source-20260828-009"]) == "personal"
     assert sources.max_sensitivity(vault, None) == "personal"
+
+
+_LATEXML = (
+    '<svg id="A1.p1.pic1" height="45" viewBox="0 0 477 45"><g transform="translate(0,45)">'
+    '<foreignObject width="477" height="45"><span>You</span> <span>are</span> '
+    '<span>Faraday</span><span>,</span><span>an</span> <span>autonomous</span> '
+    '<span>AI</span> <span>researcher</span><span>.</span><span>You</span> '
+    '<span>operate</span> <span>inside</span> <span>a</span> <span>container</span>'
+    "</foreignObject></g></svg>"
+)
+_DIAGRAM = (
+    '<svg viewBox="0 0 764 348" role="img" aria-label="Diagram of the candidate selector">'
+    '<g><path d="M0 0 L10 10"/></g></svg>'
+)
+_BARE = '<svg viewBox="0 0 10 10"><path d="M0 0 L1 1"/><path d="M2 2 L3 3"/></svg>'
+
+
+def test_foreign_object_text_is_restored_not_dropped():
+    out, report = sources.strip_svg(f"앞\n\n{_LATEXML}\n\n뒤")
+    assert "autonomous AI researcher" in out
+    assert "viewBox" not in out and "<span" not in out
+    assert "앞" in out and "뒤" in out
+    assert [r["kind"] for r in report] == ["restored"]
+    assert report[0]["after"] < report[0]["before"]
+
+
+def test_restored_text_is_marked_so_quotes_are_known_to_be_reflowed():
+    out, _ = sources.strip_svg(_LATEXML)
+    assert sources.SVG_RESTORED_OPEN in out
+    assert sources.SVG_RESTORED_CLOSE in out
+
+
+def test_diagram_falls_back_to_aria_label():
+    out, report = sources.strip_svg(_DIAGRAM)
+    assert out == "[그림: Diagram of the candidate selector]"
+    assert [r["kind"] for r in report] == ["label"]
+
+
+def test_svg_with_neither_text_nor_label_is_dropped_with_its_size():
+    out, report = sources.strip_svg(_BARE)
+    assert out == f"[svg 생략: {len(_BARE)}자]"
+    assert [r["kind"] for r in report] == ["dropped"]
+
+
+def test_content_without_svg_is_untouched():
+    body = "# 제목\n\n본문 <span>인라인</span> 계속\n"
+    out, report = sources.strip_svg(body)
+    assert out == body
+    assert report == []
+
+
+def test_every_svg_in_a_document_is_handled():
+    out, report = sources.strip_svg(f"a{_LATEXML}b{_DIAGRAM}c{_BARE}d")
+    assert "<svg" not in out
+    assert [r["kind"] for r in report] == ["restored", "label", "dropped"]
+
+
+_CHART = (
+    '<svg role="application" width="653" height="280"><g><text x="1" y="2">Draft position'
+    '</text><text x="3" y="4">Recall@1 (%)</text><path d="M0 0 L1 1"/></g></svg>'
+)
+
+
+def test_chart_without_aria_label_keeps_its_axis_text():
+    out, report = sources.strip_svg(_CHART)
+    assert out == "[그림 텍스트: Draft position Recall@1 (%)]"
+    assert [r["kind"] for r in report] == ["axes"]

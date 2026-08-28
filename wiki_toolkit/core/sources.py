@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from html import unescape
 from pathlib import Path
 
 from markdownify import markdownify
@@ -163,3 +164,71 @@ def triage_record(vault: Path, source_id: str, decision: str, date_str: str) -> 
 
 def html_to_markdown(html: str) -> str:
     return markdownify(html, heading_style="ATX").strip()
+
+
+# arxiv의 LaTeXML HTML과 일부 블로그는 그림과 코드 리스팅을 인라인 <svg>로 박아 보낸다.
+# 클리퍼는 그 마크업을 그대로 떠 온다. 2026-08-28 실측: arxiv 2608.13331 클립 906KB 중
+# 782KB(86%)가 svg 8개였고, 그중 하나는 한 줄이 148,877자였다. 이대로 source로 넣으면
+# 본문 대부분이 좌표와 스타일 문자열이 되고, BM25 토큰도 그만큼 쓰레기가 된다.
+#
+# 그런데 통째로 지우면 안 된다. 그 8개는 논문의 Appendix G(프롬프트 전문)였고 텍스트가
+# <foreignObject> 안에 들어 있었다. 반대로 DFlash 2 클립의 svg 4개는 진짜 다이어그램이고
+# 대신 aria-label에 설명이 붙어 있었다. 그래서 셋으로 나눠 처리한다.
+_SVG_BLOCK = re.compile(r"<svg\b[^>]*>.*?</svg>", re.DOTALL | re.IGNORECASE)
+_FOREIGN_OBJECT = re.compile(r"<foreignObject\b[^>]*>(.*?)</foreignObject>",
+                             re.DOTALL | re.IGNORECASE)
+_ARIA_LABEL = re.compile(r'\baria-label="([^"]*)"', re.IGNORECASE)
+_SVG_TEXT_EL = re.compile(r"<text\b[^>]*>(.*?)</text>", re.DOTALL | re.IGNORECASE)
+_TAG = re.compile(r"<[^>]+>")
+# 이보다 짧게 복원되면 텍스트가 아니라 라벨 조각이다 (축 눈금, 범례 한 글자 등).
+_SVG_MIN_TEXT = 40
+SVG_RESTORED_OPEN = "<!-- svg 텍스트 복원 시작: 줄바꿈과 띄어쓰기가 원문과 다를 수 있다 -->"
+SVG_RESTORED_CLOSE = "<!-- svg 텍스트 복원 끝 -->"
+
+
+def _svg_inner_text(block: str) -> str:
+    """svg 안의 <foreignObject>에서 사람이 읽는 텍스트만 뽑는다.
+
+    LaTeXML은 리스팅 한 줄을 단어 단위 <span>으로 쪼개 넣는데, span 사이의 공백은 살아 있고
+    줄바꿈은 마크업에 아예 없다. 그래서 복원된 텍스트는 한 문단으로 이어지고 원문과 글자가
+    같아도 배치가 다르다. 인용할 때 이 점을 알아야 하므로 호출부가 마커로 감싼다.
+    """
+    parts = _FOREIGN_OBJECT.findall(block)
+    if not parts:
+        return ""
+    text = unescape(_TAG.sub("", "\n".join(parts)))
+    return " ".join(text.split())
+
+
+def strip_svg(content: str) -> tuple[str, list[dict]]:
+    """인라인 svg를 텍스트나 라벨로 바꾼 본문과, 무엇을 어떻게 바꿨는지의 목록을 돌려준다.
+
+    바꾸기만 하고 판단은 안 한다. 클립을 이 함수에 통과시킬지는 호출부가 정하고, 원본
+    바이트는 클립을 먼저 커밋해 git에 남긴다 (CLAUDE.md의 Inbox 처리 순서).
+    """
+    report: list[dict] = []
+
+    def _replace(m: re.Match[str]) -> str:
+        block = m.group()
+        text = _svg_inner_text(block)
+        if len(text) >= _SVG_MIN_TEXT:
+            report.append({"kind": "restored", "before": len(block), "after": len(text)})
+            return f"{SVG_RESTORED_OPEN}\n\n{text}\n\n{SVG_RESTORED_CLOSE}"
+        label = _ARIA_LABEL.search(block)
+        if label and label.group(1).strip():
+            out = f"[그림: {label.group(1).strip()}]"
+            report.append({"kind": "label", "before": len(block), "after": len(out)})
+            return out
+        # 차트는 aria-label 없이 축 이름만 <text>로 들고 있는 경우가 많다. 그것만으로도
+        # "무엇을 그린 그림인지"는 남으므로 크기 숫자보다 낫다 (DFlash 2 클립의 svg 2개).
+        axes = " ".join(" ".join(unescape(_TAG.sub("", t)).split())
+                        for t in _SVG_TEXT_EL.findall(block)).strip()
+        if axes:
+            out = f"[그림 텍스트: {axes}]"
+            report.append({"kind": "axes", "before": len(block), "after": len(out)})
+            return out
+        out = f"[svg 생략: {len(block)}자]"
+        report.append({"kind": "dropped", "before": len(block), "after": len(out)})
+        return out
+
+    return _SVG_BLOCK.sub(_replace, content), report
