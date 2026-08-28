@@ -178,6 +178,19 @@ def build_wiki_tools(vault: Path) -> list:
             date_str=schema.today_str())
         return _done(f"updated {p.stem} quote", ["10_Claims"])
 
+    @tool("update_claim_text",
+          "Rewrite an unverified claim's assertion when it overstates its source (a dropped "
+          "hedge like can/usually/may, or a single benchmark written as a general fact). "
+          "Never touches the quote, the status, the folder, or source_refs. Requires a "
+          "reason. Refuses once a status has been assigned: that judgement was about the "
+          "old sentence.",
+          _schema({"claim_id": _STR, "claim": _STR, "reason": _STR}))
+    async def update_claim_text(args):
+        p = claims.update_claim_text(
+            vault, args["claim_id"], claim=args["claim"], reason=args["reason"],
+            date_str=schema.today_str())
+        return _done(f"updated {p.stem} claim text", ["10_Claims"])
+
     @tool("create_claim", "Create an atomic claim (always unverified). "
           "Always pass source_refs so the claim stays source-linked, and quote with the "
           "source passage this claim came from, copied verbatim (do not summarize or "
@@ -369,6 +382,7 @@ def build_wiki_tools(vault: Path) -> list:
         return _ok(text)
 
     return [create_source, triage_record, update_source_raw, update_claim_quote,
+            update_claim_text,
             create_claim, find_similar_claim,
             promote_claim, set_claim_status, list_pending, create_wiki_page,
             update_wiki_page, create_learning_item, list_due_reviews, record_review,

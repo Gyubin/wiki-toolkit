@@ -268,3 +268,68 @@ def test_create_claim_rejects_unknown_sensitivity(vault):
     with pytest.raises(ValueError, match="sensitivity"):
         claims.create_claim(vault, claim="주장", claim_type="opinion", source_refs=[],
                             date_str="2026-08-28", seq=9, sensitivity="secret")
+
+
+def _pending(vault, **kw):
+    kw.setdefault("claim", "원문의 can을 떨어뜨린 단정문이다")
+    kw.setdefault("claim_type", "technical_fact")
+    kw.setdefault("source_refs", ["source-20260829-001"])
+    kw.setdefault("date_str", "2026-08-29")
+    kw.setdefault("seq", 1)
+    kw.setdefault("quote", "PP can form bottlenecks that delay progress.")
+    return claims.create_claim(vault, **kw)
+
+
+def test_update_claim_text_rewrites_only_the_assertion(vault):
+    _pending(vault)
+    path = claims.update_claim_text(
+        vault, "claim-20260829-001",
+        claim="원문의 can을 살려 병목이 생길 수 있다고 쓴다",
+        reason="hedge 복원", date_str="2026-08-29")
+    meta, body = schema.parse_doc(path.read_text(encoding="utf-8"))
+    assert meta["claim"] == "원문의 can을 살려 병목이 생길 수 있다고 쓴다"
+    assert "생길 수 있다" in body
+    # 인용문, status, 폴더, source_refs는 그대로
+    assert "PP can form bottlenecks that delay progress." in body
+    assert meta["status"] == "unverified"
+    assert meta["source_refs"] == ["source-20260829-001"]
+    assert path.parent.name == "pending"
+
+
+def test_update_claim_text_refuses_once_a_status_was_assigned(vault):
+    _pending(vault)
+    claims.promote_claim(vault, "claim-20260829-001",
+                         target_status="accepted_for_now", date_str="2026-08-29")
+    with pytest.raises(PermissionError, match="not unverified"):
+        claims.update_claim_text(vault, "claim-20260829-001", claim="바꾼 주장",
+                                 reason="테스트", date_str="2026-08-29")
+
+
+def test_update_claim_text_requires_a_reason_and_a_real_change(vault):
+    _pending(vault)
+    with pytest.raises(ValueError, match="reason"):
+        claims.update_claim_text(vault, "claim-20260829-001", claim="다른 주장",
+                                 reason="  ", date_str="2026-08-29")
+    with pytest.raises(ValueError, match="unchanged"):
+        claims.update_claim_text(vault, "claim-20260829-001",
+                                 claim="원문의 can을 떨어뜨린 단정문이다",
+                                 reason="같은 문장", date_str="2026-08-29")
+
+
+def test_update_claim_text_logs_and_reindexes(vault):
+    _pending(vault)
+    claims.update_claim_text(vault, "claim-20260829-001", claim="고친 주장",
+                             reason="hedge 복원", date_str="2026-08-29")
+    log = (vault / "06_Metadata/logs/ingest-log.md").read_text(encoding="utf-8")
+    assert "claim text rewritten for claim-20260829-001 (hedge 복원)" in log
+    idx = (vault / "06_Metadata/indexes/claim-index.md").read_text(encoding="utf-8")
+    assert "고친 주장" in idx
+    assert "원문의 can을 떨어뜨린 단정문이다" not in idx
+
+
+def test_update_claim_text_keeps_a_claim_that_has_no_quote(vault):
+    _pending(vault, quote=None)
+    path = claims.update_claim_text(vault, "claim-20260829-001", claim="고친 주장",
+                                    reason="hedge 복원", date_str="2026-08-29")
+    _, body = schema.parse_doc(path.read_text(encoding="utf-8"))
+    assert body.strip() == "## Claim\n\n고친 주장"

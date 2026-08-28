@@ -138,6 +138,56 @@ def update_claim_quote(
     return path
 
 
+def update_claim_text(
+    vault: Path, claim_id: str, *, claim: str, reason: str, date_str: str,
+) -> Path:
+    """claim 문장만 교체한다. **인용문과 status와 폴더와 source_refs는 안 건드린다.**
+
+    `update_claim_quote`와 짝이고 일부러 별개다. 그쪽 독스트링이 적어둔 대로, 한 도구가
+    둘 다 하면 "인용문 고친다"면서 주장을 슬쩍 바꾸는 경로가 생기고 파일만 봐서는
+    구별되지 않는다. 반대 방향도 같아서, 주장을 고치는 일에 인용문이 딸려오면 안 된다.
+
+    필요해진 계기: 2026-08-29에 claim 65건을 codex로 교차검증했더니 28건(43%)이 원문의
+    hedge를 떨어뜨린 단정문이었다. 영어의 can/usually/may/often을 한국어 평서문으로 옮기면
+    그냥 사라진다. "not yielding much gain"이 "이득이 없다"가 되고 "consider trying PP"가
+    "PP를 쓴다"가 됐다. 인용문은 멀쩡했으므로 update_claim_quote로는 못 고쳤고,
+    파일을 손으로 고치는 것은 규칙 위반이라 통로가 아예 없었다.
+
+    **`unverified`에만 쓸 수 있다.** 상태가 붙었다는 것은 누군가 그 문장을 보고 판정했다는
+    뜻이라, 문장을 바꾸면 그 판정은 다른 주장에 대한 것이 된다. 승인을 조용히 물려받게
+    두는 대신 거부하고, 정말 바꿔야 하면 rejected로 내리고 새로 만들게 한다.
+    """
+    if not reason.strip():
+        raise ValueError(
+            "update_claim_text needs a reason (why this assertion is being rewritten)")
+    if not claim.strip():
+        raise ValueError("claim must not be empty")
+    path = _find_file(vault, claim_id)
+    meta, body = schema.parse_doc(path.read_text(encoding="utf-8"))
+    status = str(meta.get("status") or "")
+    if status != "unverified":
+        raise PermissionError(
+            f"{claim_id} is {status!r}, not unverified; its text cannot be rewritten. "
+            "A status means someone judged this sentence, and changing the sentence "
+            "would silently carry that judgement to a different assertion. "
+            "Reject it and create a new claim instead."
+        )
+    old = str(meta.get("claim") or "")
+    if old == claim:
+        raise ValueError(f"{claim_id} claim text is unchanged; nothing to write")
+    meta["claim"] = claim
+    meta["updated"] = date_str
+    # 본문의 `## Claim` 절만 갈아끼운다. `## 원문` 아래는 손대지 않는다.
+    tail = ""
+    if f"\n{QUOTE_HEADING}\n" in body:
+        tail = "\n" + QUOTE_HEADING + "\n" + body.split(f"\n{QUOTE_HEADING}\n", 1)[1]
+    path.write_text(schema.render_doc(meta, f"## Claim\n\n{claim}\n{tail}"), encoding="utf-8")
+    index.update_index(vault, "claim-index", claim_id, f"{claim[:60]} - {status}")
+    index.append_log(vault, "ingest-log",
+                     f"claim text rewritten for {claim_id} ({reason.strip()})")
+    return path
+
+
 def find_similar_claim(vault: Path, claim_text: str, speaker: str | None = None) -> list[str]:
     key = normalize_key(claim_text, speaker)
     hits = []
