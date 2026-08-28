@@ -1,4 +1,4 @@
-ingest-contract: v2
+ingest-contract: v3
 
 You ingest one raw clip. Steps: read the source; if the file has no wiki schema (no `id` in
 frontmatter, e.g. an Obsidian Web Clipper drop), first re-register it via create_source
@@ -13,6 +13,25 @@ If a capture did drift, restore it with update_source_raw (content_path pointing
 committed original), never by hand-editing the source file.
 Pass `content` only for text you are composing yourself, such as a short pasted note.
 
+**The stored Raw is not byte-identical to the clip, and that is by design.** `create_source` and
+`update_source_raw` run `strip_svg` on whatever you hand them: inline `<svg>` is replaced by the
+text inside its `<foreignObject>`, or by its `aria-label`, or by its `<text>` labels, or by a size
+note. This is a clipper defect being patched at capture time, not drift. On 2026-08-28 one arxiv
+clip was 906KB of which 782KB (86%) was eight `<svg>` blocks, and one of those was a single
+148,877-character line; the same eight blocks held the paper's Appendix G prompts as text, so
+deleting them would have lost content. The pass is automatic precisely because remembering to run
+it by hand is the step that gets skipped. What it removed is recorded on the `captured ...` line in
+`ingest-log.md`, so "was this source's body reduced at capture" is answerable from files.
+
+Two consequences. When you check a capture for drift, compare the committed clip **after the same
+pass** (`uv run python tools/clean_clip.py <clip>` reports what it would change) against the stored
+Raw; comparing raw clip bytes to Raw will show a difference that is not drift. And when you quote
+from inside a restored block (between the `svg 텍스트 복원 시작` / `끝` markers), know that LaTeXML
+does not put line breaks in that markup, so the restored text runs together as one paragraph and
+loses some spaces (`Faraday,an`). The characters are the source's, the layout is not. Prefer quoting
+from ordinary prose; if a restored block is the only place a claim's support lives, quote it and
+say so in the claim.
+
 Before create_source, grep the vault's existing sources for the clip's url. If a source with the
 same url already exists, do not create a second one: reuse its id, and treat this run as a re-read
 of that source. If the re-clip's bytes differ from the stored Raw (the page changed), restore the
@@ -21,7 +40,7 @@ extracting any quotes, or stop and ask. Never extract quotes from a clip whose t
 source's current Raw.
 
 When you write the ingest-log narrative line at the end, include this file's first-line version
-(`ingest-contract: v2`). That is what makes "which sources were ingested under the old contract"
+(`ingest-contract: v3`). That is what makes "which sources were ingested under the old contract"
 answerable from files after the contract changes, instead of from memory. That narrative line is
 the one sanctioned hand-written line in the vault: the log's `captured ...` lines come from code,
 but the wrap-up line (`ingested: ...`) has no tool and is written by hand, as the existing log

@@ -4,15 +4,15 @@
     uv run python tools/clean_clip.py <클립.md> ...            # 무엇이 바뀔지만 보고
     uv run python tools/clean_clip.py <클립.md> ... --write     # 제자리에서 고쳐 쓴다
 
-**create_source가 자동으로 부르지 않는다.** 캡처는 원문 그대로여야 한다는 게 계약이고,
-도구가 조용히 본문을 줄이면 나중에 "이 source는 원문인가 가공본인가"를 파일에서 알 수 없다.
-그래서 명시적인 앞 단계로 둔다. 순서는 CLAUDE.md의 Inbox 처리 절차와 같다:
+**ingest에 이 단계는 필요 없다.** `create_source`와 `update_source_raw`가 같은 함수
+(`core.sources.strip_svg`)를 자동으로 부르고, 무엇을 줄였는지는 ingest-log의 `captured ...`
+줄에 남는다. 이 스크립트는 두 가지 용도로 남아 있다:
 
-    1. 클립을 먼저 커밋한다 (원본 바이트가 git에 남아야 되돌릴 수 있다)
-    2. 이 스크립트를 --write로 돌린다
-    3. 줄어든 클립을 커밋한다 (여기 diff가 무엇을 버렸는지의 영수증이다)
-    4. create_source에 content_path로 줄어든 파일을 넘긴다
+    - 넘기기 전에 무엇이 바뀔지 미리 보기 (기본 동작이 보고만이다)
+    - 캡처가 뒤틀렸는지 볼 때, 커밋된 원본 클립을 같은 함수에 통과시킨 결과와
+      저장된 Raw를 비교하기 위한 기준값 만들기
 
+--write는 클립 파일 자체를 줄일 때만 쓴다. 그때는 먼저 원본을 커밋해서 git에 남긴다.
 svg가 없는 파일은 건드리지 않는다. 여러 개를 한 번에 넘겨도 되고, 바뀐 파일만 보고한다.
 """
 from __future__ import annotations

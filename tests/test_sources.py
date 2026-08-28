@@ -276,3 +276,40 @@ def test_chart_without_aria_label_keeps_its_axis_text():
     out, report = sources.strip_svg(_CHART)
     assert out == "[그림 텍스트: Draft position Recall@1 (%)]"
     assert [r["kind"] for r in report] == ["axes"]
+
+
+def test_create_source_strips_svg_automatically(vault):
+    body = f"앞\n\n{_LATEXML}\n\n뒤"
+    path = sources.create_source(
+        vault, origin="browser", content=body, date_str="2026-08-28", seq=1)
+    _, raw = schema.parse_doc(path.read_text(encoding="utf-8"))
+    assert "<svg" not in raw
+    assert "autonomous AI researcher" in raw   # 내용은 남는다
+    assert sources.SVG_RESTORED_OPEN in raw    # 재배치됐다는 표시도 남는다
+
+
+def test_create_source_logs_what_the_svg_pass_removed(vault):
+    sources.create_source(
+        vault, origin="browser", content=f"앞{_LATEXML}뒤",
+        date_str="2026-08-28", seq=1)
+    log = (vault / "06_Metadata/logs/ingest-log.md").read_text(encoding="utf-8")
+    assert "svg 1개 정리 [restored 1]" in log
+
+
+def test_create_source_without_svg_logs_nothing_extra(vault):
+    sources.create_source(
+        vault, origin="chatgpt", content="그냥 텍스트", date_str="2026-08-28", seq=1)
+    log = (vault / "06_Metadata/logs/ingest-log.md").read_text(encoding="utf-8")
+    assert "svg" not in log
+
+
+def test_update_source_raw_strips_svg_so_restore_does_not_bring_it_back(vault):
+    """되돌리기는 커밋된 원본 클립을 다시 넘기는 것이라 svg가 들어 있다."""
+    sources.create_source(
+        vault, origin="browser", content="첫 캡처", date_str="2026-08-28", seq=1)
+    path = sources.update_source_raw(
+        vault, "source-20260828-001", content=f"원본{_LATEXML}복원",
+        reason="원본 클립에서 되돌림")
+    _, raw = schema.parse_doc(path.read_text(encoding="utf-8"))
+    assert "<svg" not in raw
+    assert "autonomous AI researcher" in raw

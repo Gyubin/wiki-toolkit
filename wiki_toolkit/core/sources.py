@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from html import unescape
 from pathlib import Path
 
@@ -30,6 +31,78 @@ def botwall_marker(content: str) -> str | None:
     return None
 
 
+# arxiv의 LaTeXML HTML과 일부 블로그는 그림과 코드 리스팅을 인라인 <svg>로 박아 보낸다.
+# 클리퍼는 그 마크업을 그대로 떠 온다. 2026-08-28 실측: arxiv 2608.13331 클립 906KB 중
+# 782KB(86%)가 svg 8개였고, 그중 하나는 한 줄이 148,877자였다. 이대로 source로 넣으면
+# 본문 대부분이 좌표와 스타일 문자열이 되고, BM25 토큰도 그만큼 쓰레기가 된다.
+#
+# 그런데 통째로 지우면 안 된다. 그 8개는 논문의 Appendix G(프롬프트 전문)였고 텍스트가
+# <foreignObject> 안에 들어 있었다. 반대로 DFlash 2 클립의 svg 4개는 진짜 다이어그램이고
+# 대신 aria-label에 설명이 붙어 있었다. 그래서 셋으로 나눠 처리한다.
+_SVG_BLOCK = re.compile(r"<svg\b[^>]*>.*?</svg>", re.DOTALL | re.IGNORECASE)
+_FOREIGN_OBJECT = re.compile(r"<foreignObject\b[^>]*>(.*?)</foreignObject>",
+                             re.DOTALL | re.IGNORECASE)
+_ARIA_LABEL = re.compile(r'\baria-label="([^"]*)"', re.IGNORECASE)
+_SVG_TEXT_EL = re.compile(r"<text\b[^>]*>(.*?)</text>", re.DOTALL | re.IGNORECASE)
+_TAG = re.compile(r"<[^>]+>")
+# 이보다 짧게 복원되면 텍스트가 아니라 라벨 조각이다 (축 눈금, 범례 한 글자 등).
+_SVG_MIN_TEXT = 40
+SVG_RESTORED_OPEN = "<!-- svg 텍스트 복원 시작: 줄바꿈과 띄어쓰기가 원문과 다를 수 있다 -->"
+SVG_RESTORED_CLOSE = "<!-- svg 텍스트 복원 끝 -->"
+
+
+def _svg_inner_text(block: str) -> str:
+    """svg 안의 <foreignObject>에서 사람이 읽는 텍스트만 뽑는다.
+
+    LaTeXML은 리스팅 한 줄을 단어 단위 <span>으로 쪼개 넣는데, span 사이의 공백은 살아 있고
+    줄바꿈은 마크업에 아예 없다. 그래서 복원된 텍스트는 한 문단으로 이어지고 원문과 글자가
+    같아도 배치가 다르다. 인용할 때 이 점을 알아야 하므로 호출부가 마커로 감싼다.
+    """
+    parts = _FOREIGN_OBJECT.findall(block)
+    if not parts:
+        return ""
+    text = unescape(_TAG.sub("", "\n".join(parts)))
+    return " ".join(text.split())
+
+
+def strip_svg(content: str) -> tuple[str, list[dict]]:
+    """인라인 svg를 텍스트나 라벨로 바꾼 본문과, 무엇을 어떻게 바꿨는지의 목록을 돌려준다.
+
+    `create_source`와 `update_source_raw`가 자동으로 부른다. 클리핑 단계의 결함을 캡처
+    직전에 메우는 것이라, 사람이 매번 기억해서 앞 단계를 돌리게 두면 잊는 날 906KB가
+    그대로 들어온다. 대신 무엇을 줄였는지는 반환하는 report로 ingest-log에 남는다.
+
+    원본 바이트는 여전히 클립 커밋에 있다 (CLAUDE.md의 Inbox 처리 순서 1번). 이 함수는
+    source에 들어갈 사본만 줄인다.
+    """
+    report: list[dict] = []
+
+    def _replace(m: re.Match[str]) -> str:
+        block = m.group()
+        text = _svg_inner_text(block)
+        if len(text) >= _SVG_MIN_TEXT:
+            report.append({"kind": "restored", "before": len(block), "after": len(text)})
+            return f"{SVG_RESTORED_OPEN}\n\n{text}\n\n{SVG_RESTORED_CLOSE}"
+        label = _ARIA_LABEL.search(block)
+        if label and label.group(1).strip():
+            out = f"[그림: {label.group(1).strip()}]"
+            report.append({"kind": "label", "before": len(block), "after": len(out)})
+            return out
+        # 차트는 aria-label 없이 축 이름만 <text>로 들고 있는 경우가 많다. 그것만으로도
+        # "무엇을 그린 그림인지"는 남으므로 크기 숫자보다 낫다 (DFlash 2 클립의 svg 2개).
+        axes = " ".join(" ".join(unescape(_TAG.sub("", t)).split())
+                        for t in _SVG_TEXT_EL.findall(block)).strip()
+        if axes:
+            out = f"[그림 텍스트: {axes}]"
+            report.append({"kind": "axes", "before": len(block), "after": len(out)})
+            return out
+        out = f"[svg 생략: {len(block)}자]"
+        report.append({"kind": "dropped", "before": len(block), "after": len(out)})
+        return out
+
+    return _SVG_BLOCK.sub(_replace, content), report
+
+
 # 파일 시스템이 못 받거나 경로를 갈라놓는 문자들. 제목을 파일명으로 쓰려면 먼저 걷어낸다.
 _UNSAFE_IN_NAME = re.compile(r'[/\\:*?"<>|\x00-\x1f]')
 
@@ -48,6 +121,15 @@ def source_filename(source_id: str, title: str | None) -> str:
     return f"{clean}.md" if clean else f"{source_id}.md"
 
 
+def svg_report_note(report: list[dict], before: int, after: int) -> str:
+    """strip_svg의 report를 로그 한 줄로 접는다. 안 줄였으면 빈 문자열."""
+    if not report:
+        return ""
+    kinds = Counter(r["kind"] for r in report)
+    detail = ", ".join(f"{k} {n}" for k, n in kinds.most_common())
+    return f" (svg {len(report)}개 정리 [{detail}]: {before:,} -> {after:,}자)"
+
+
 def create_source(
     vault: Path, *, origin: str, content: str, sensitivity: str = "personal",
     date_str: str, seq: int, url: str | None = None, subdir: str = "raw",
@@ -63,6 +145,10 @@ def create_source(
             f"capture looks like a bot-wall page (found {marker!r}); not saved. "
             "Fetch the real content first, or paste it in by hand."
         )
+    # 인라인 svg는 클리핑 단계의 결함이라 여기서 메운다. 봇월 검사보다 뒤에 두는 이유는
+    # 차단 페이지를 svg 정리된 상태로 판정하면 마커를 놓칠 수 있어서다.
+    raw_len = len(content)
+    content, svg_report = strip_svg(content)
     sid = schema.make_id("source", date_str, seq)
     meta = {
         "type": "source", "id": sid, "origin": origin,
@@ -75,7 +161,10 @@ def create_source(
         raise FileExistsError(
             f"{path.name} already exists; pick a different title (or a fresh seq)")
     path.write_text(schema.render_doc(meta, body), encoding="utf-8")
-    index.append_log(vault, "ingest-log", f"captured {sid} from {origin} [{sensitivity}]")
+    index.append_log(
+        vault, "ingest-log",
+        f"captured {sid} from {origin} [{sensitivity}]"
+        + svg_report_note(svg_report, raw_len, len(content)))
     return path
 
 
@@ -140,6 +229,10 @@ def update_source_raw(vault: Path, source_id: str, *, content: str, reason: str)
     if marker is not None:
         raise ValueError(
             f"replacement looks like a bot-wall page (found {marker!r}); not saved.")
+    # 되돌리기는 보통 커밋된 원본 클립을 다시 넘기는 것이라 svg가 그대로 들어 있다.
+    # 여기서 안 줄이면 복구 한 번에 906KB가 되살아난다.
+    raw_len = len(content)
+    content, svg_report = strip_svg(content)
     path = find_source(vault, source_id)
     meta, body = schema.parse_doc(path.read_text(encoding="utf-8"))
     new_body = f"## Raw\n\n{content}\n"
@@ -149,7 +242,7 @@ def update_source_raw(vault: Path, source_id: str, *, content: str, reason: str)
     index.append_log(
         vault, "ingest-log",
         f"raw body rewritten for {source_id}: {len(body)} -> {len(new_body)} chars "
-        f"({reason.strip()})")
+        f"({reason.strip()})" + svg_report_note(svg_report, raw_len, len(content)))
     return path
 
 
@@ -164,71 +257,3 @@ def triage_record(vault: Path, source_id: str, decision: str, date_str: str) -> 
 
 def html_to_markdown(html: str) -> str:
     return markdownify(html, heading_style="ATX").strip()
-
-
-# arxiv의 LaTeXML HTML과 일부 블로그는 그림과 코드 리스팅을 인라인 <svg>로 박아 보낸다.
-# 클리퍼는 그 마크업을 그대로 떠 온다. 2026-08-28 실측: arxiv 2608.13331 클립 906KB 중
-# 782KB(86%)가 svg 8개였고, 그중 하나는 한 줄이 148,877자였다. 이대로 source로 넣으면
-# 본문 대부분이 좌표와 스타일 문자열이 되고, BM25 토큰도 그만큼 쓰레기가 된다.
-#
-# 그런데 통째로 지우면 안 된다. 그 8개는 논문의 Appendix G(프롬프트 전문)였고 텍스트가
-# <foreignObject> 안에 들어 있었다. 반대로 DFlash 2 클립의 svg 4개는 진짜 다이어그램이고
-# 대신 aria-label에 설명이 붙어 있었다. 그래서 셋으로 나눠 처리한다.
-_SVG_BLOCK = re.compile(r"<svg\b[^>]*>.*?</svg>", re.DOTALL | re.IGNORECASE)
-_FOREIGN_OBJECT = re.compile(r"<foreignObject\b[^>]*>(.*?)</foreignObject>",
-                             re.DOTALL | re.IGNORECASE)
-_ARIA_LABEL = re.compile(r'\baria-label="([^"]*)"', re.IGNORECASE)
-_SVG_TEXT_EL = re.compile(r"<text\b[^>]*>(.*?)</text>", re.DOTALL | re.IGNORECASE)
-_TAG = re.compile(r"<[^>]+>")
-# 이보다 짧게 복원되면 텍스트가 아니라 라벨 조각이다 (축 눈금, 범례 한 글자 등).
-_SVG_MIN_TEXT = 40
-SVG_RESTORED_OPEN = "<!-- svg 텍스트 복원 시작: 줄바꿈과 띄어쓰기가 원문과 다를 수 있다 -->"
-SVG_RESTORED_CLOSE = "<!-- svg 텍스트 복원 끝 -->"
-
-
-def _svg_inner_text(block: str) -> str:
-    """svg 안의 <foreignObject>에서 사람이 읽는 텍스트만 뽑는다.
-
-    LaTeXML은 리스팅 한 줄을 단어 단위 <span>으로 쪼개 넣는데, span 사이의 공백은 살아 있고
-    줄바꿈은 마크업에 아예 없다. 그래서 복원된 텍스트는 한 문단으로 이어지고 원문과 글자가
-    같아도 배치가 다르다. 인용할 때 이 점을 알아야 하므로 호출부가 마커로 감싼다.
-    """
-    parts = _FOREIGN_OBJECT.findall(block)
-    if not parts:
-        return ""
-    text = unescape(_TAG.sub("", "\n".join(parts)))
-    return " ".join(text.split())
-
-
-def strip_svg(content: str) -> tuple[str, list[dict]]:
-    """인라인 svg를 텍스트나 라벨로 바꾼 본문과, 무엇을 어떻게 바꿨는지의 목록을 돌려준다.
-
-    바꾸기만 하고 판단은 안 한다. 클립을 이 함수에 통과시킬지는 호출부가 정하고, 원본
-    바이트는 클립을 먼저 커밋해 git에 남긴다 (CLAUDE.md의 Inbox 처리 순서).
-    """
-    report: list[dict] = []
-
-    def _replace(m: re.Match[str]) -> str:
-        block = m.group()
-        text = _svg_inner_text(block)
-        if len(text) >= _SVG_MIN_TEXT:
-            report.append({"kind": "restored", "before": len(block), "after": len(text)})
-            return f"{SVG_RESTORED_OPEN}\n\n{text}\n\n{SVG_RESTORED_CLOSE}"
-        label = _ARIA_LABEL.search(block)
-        if label and label.group(1).strip():
-            out = f"[그림: {label.group(1).strip()}]"
-            report.append({"kind": "label", "before": len(block), "after": len(out)})
-            return out
-        # 차트는 aria-label 없이 축 이름만 <text>로 들고 있는 경우가 많다. 그것만으로도
-        # "무엇을 그린 그림인지"는 남으므로 크기 숫자보다 낫다 (DFlash 2 클립의 svg 2개).
-        axes = " ".join(" ".join(unescape(_TAG.sub("", t)).split())
-                        for t in _SVG_TEXT_EL.findall(block)).strip()
-        if axes:
-            out = f"[그림 텍스트: {axes}]"
-            report.append({"kind": "axes", "before": len(block), "after": len(out)})
-            return out
-        out = f"[svg 생략: {len(block)}자]"
-        report.append({"kind": "dropped", "before": len(block), "after": len(out)})
-        return out
-
-    return _SVG_BLOCK.sub(_replace, content), report
