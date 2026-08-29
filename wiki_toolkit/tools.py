@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 from pathlib import Path
 
 from claude_agent_sdk import create_sdk_mcp_server, tool
 
 from . import schema
-from .core import claims, git, ids, learning, pipeline, projects, search, sources, wiki
+from .core import claims, git, ids, learning, locking, pipeline, projects, search, sources, wiki
 
 WIKI_TOOL_NAMES = [
     "mcp__wiki__create_source", "mcp__wiki__triage_record",
@@ -124,6 +125,19 @@ def build_wiki_tools(vault: Path) -> list:
             out += "\n(경고: vault 자동 커밋이 실패했다. vault의 git 상태를 확인해라)"
         return _ok(out)
 
+    def _locked(fn):
+        """쓰기 핸들러 전체를 프로세스 간 락으로 감싼다 (core/locking.py).
+
+        임계구역은 "번호 따기 -> 파일 쓰기 -> 인덱스/로그 갱신 -> git add -> git commit"
+        전체다. _done만 감싸면 ids.next_seq가 락 밖에 남아 프로세스 둘이 같은 번호를
+        딴다. 읽기 전용 도구에는 걸지 않는다: 읽기는 병렬로 다 된다.
+        """
+        @functools.wraps(fn)
+        async def locked(args):
+            with locking.vault_write_lock(vault):
+                return await fn(args)
+        return locked
+
     @tool("create_source",
           "Capture a raw clip as a source in the Inbox. Pass content_path (a file) "
           "instead of content for anything long: retyping a clip into the argument is "
@@ -133,6 +147,7 @@ def build_wiki_tools(vault: Path) -> list:
           _schema({"origin": _STR},
                   {"content": _STR, "content_path": _STR, "sensitivity": _STR,
                    "url": _STR, "title": _STR}))
+    @_locked
     async def create_source(args):
         today = schema.today_str()
         seq = ids.next_seq(vault, "source", today, ["00_Inbox"])
@@ -153,6 +168,7 @@ def build_wiki_tools(vault: Path) -> list:
     @tool("triage_record", "Record a triage decision (drop|keep-as-link|deep) "
           "for an existing source id",
           {"source_id": str, "decision": str})
+    @_locked
     async def triage_record(args):
         sources.triage_record(vault, args["source_id"], args["decision"], schema.today_str())
         return _done(f"recorded triage {args['source_id']} -> {args['decision']}", [])
@@ -162,6 +178,7 @@ def build_wiki_tools(vault: Path) -> list:
           "Use content_path to restore from the original capture without retyping it.",
           _schema({"source_id": _STR, "reason": _STR},
                   {"content": _STR, "content_path": _STR}))
+    @_locked
     async def update_source_raw(args):
         p = sources.update_source_raw(
             vault, args["source_id"], content=resolve_content(args), reason=args["reason"])
@@ -172,6 +189,7 @@ def build_wiki_tools(vault: Path) -> list:
           "Never touches the claim text, its status, or which folder it lives in. "
           "Requires a reason.",
           _schema({"claim_id": _STR, "quote": _STR, "reason": _STR}))
+    @_locked
     async def update_claim_quote(args):
         p = claims.update_claim_quote(
             vault, args["claim_id"], quote=args["quote"], reason=args["reason"],
@@ -185,6 +203,7 @@ def build_wiki_tools(vault: Path) -> list:
           "reason. Refuses once a status has been assigned: that judgement was about the "
           "old sentence.",
           _schema({"claim_id": _STR, "claim": _STR, "reason": _STR}))
+    @_locked
     async def update_claim_text(args):
         p = claims.update_claim_text(
             vault, args["claim_id"], claim=args["claim"], reason=args["reason"],
@@ -200,6 +219,7 @@ def build_wiki_tools(vault: Path) -> list:
           _schema({"claim": _STR, "claim_type": _STR},
                   {"source_refs": _STR_LIST, "proposed_status": _STR, "speaker": _STR,
                    "quote": _STR, "sensitivity": _STR}))
+    @_locked
     async def create_claim(args):
         refs = args.get("source_refs", [])
         # claim은 원문 인용을 담으므로 source의 민감도를 상속해야 한다. 안 그러면
@@ -225,6 +245,7 @@ def build_wiki_tools(vault: Path) -> list:
           "사람 판단으로 올릴 때는 그 판단을 evidence_refs에 문장으로 적는다.",
           _schema({"claim_id": _STR, "target_status": _STR},
                   {"evidence_refs": _STR_LIST}))
+    @_locked
     async def promote_claim(args):
         p = claims.promote_claim(
             vault, args["claim_id"], target_status=args["target_status"],
@@ -235,6 +256,7 @@ def build_wiki_tools(vault: Path) -> list:
 
     @tool("set_claim_status", "Set a non-verified status (disputed/outdated/rejected)",
           _schema({"claim_id": _STR, "status": _STR}, {"superseded_by": _STR}))
+    @_locked
     async def set_claim_status(args):
         p = claims.set_claim_status(
             vault, args["claim_id"], status=args["status"],
@@ -254,6 +276,7 @@ def build_wiki_tools(vault: Path) -> list:
           "Fails if the page exists; then use update_wiki_page instead.",
           _schema({"name": _STR, "page_type": _STR, "body": _STR},
                   {"claim_refs": _STR_LIST, "domain": _STR_LIST, "aliases": _STR_LIST}))
+    @_locked
     async def create_wiki_page(args):
         p = wiki.create_wiki_page(
             vault, name=args["name"], page_type=args["page_type"], body=args["body"],
@@ -270,6 +293,7 @@ def build_wiki_tools(vault: Path) -> list:
           _schema({"path": _STR},
                   {"body": _STR, "body_path": _STR, "add_claim_refs": _STR_LIST,
                    "status": _STR, "aliases": _STR_LIST}))
+    @_locked
     async def update_wiki_page(args):
         p = resolve_wiki_page_path(vault, args["path"])
         wiki.update_wiki_page(
@@ -282,6 +306,7 @@ def build_wiki_tools(vault: Path) -> list:
     @tool("create_learning_item", "Create a learning item / flashcard",
           _schema({"topic": _STR, "skill_area": _STR},
                   {"wiki_refs": _STR_LIST, "source_refs": _STR_LIST}))
+    @_locked
     async def create_learning_item(args):
         p = learning.create_learning_item(
             vault, topic=args["topic"], skill_area=args["skill_area"],
@@ -298,6 +323,7 @@ def build_wiki_tools(vault: Path) -> list:
 
     @tool("record_review", "Record a review result (passed true/false)",
           {"learning_id": str, "passed": bool})
+    @_locked
     async def record_review(args):
         p = learning.record_review(
             vault, args["learning_id"], passed=bool(args["passed"]),
@@ -326,6 +352,7 @@ def build_wiki_tools(vault: Path) -> list:
     @tool("create_session_summary",
           "Write a session summary under 01_Projects/<repo>/sessions (sensitivity=work)",
           {"repo": str, "title": str, "body": str})
+    @_locked
     async def create_session_summary(args):
         slug = projects.project_slug(args["repo"])
         p = projects.create_session_summary(
@@ -339,6 +366,7 @@ def build_wiki_tools(vault: Path) -> list:
           "Write an ADR under 01_Projects/<repo>/decisions (sensitivity=work)",
           {"repo": str, "title": str, "context": str, "decision": str,
            "alternatives": str, "consequences": str})
+    @_locked
     async def create_decision(args):
         slug = projects.project_slug(args["repo"])
         p = projects.create_decision(

@@ -18,7 +18,7 @@ explicit arg > `$WIKI_VAULT` > cwd.
 ```
 L0  schema.py          enums, IDs, frontmatter render/parse - SINGLE SOURCE OF TRUTH
 L1  core/*             pure, deterministic vault logic (no LLM, no web)
-      sources  claims  wiki  learning  index  ids  scaffold  git  projects  lint  search
+      sources  claims  wiki  learning  index  ids  scaffold  git  projects  lint  search  locking
       pipeline (다음 단계 계산)
 L2  tools.py           wraps core/* as MCP @tools (mcp__wiki__*, 20 tools);
                        write tools auto-commit the vault (audit trail)
@@ -35,6 +35,7 @@ violation fails the test, not a code review.
 - `core/ids.py` — next_seq: 해당 날짜 최대 시퀀스 + 1 (파일 개수 아님; ID 재사용 방지).
 - `core/scaffold.py` — create vault folder tree + seed index/log/template files (+.gitkeep). init 전용.
 - `core/index.py` — append-only logs, upsert-by-id index lines under `06_Metadata/`.
+- `core/locking.py` - 프로세스 간 vault 쓰기 락 (fcntl.flock). 쓰기 핸들러 전체가 임계구역이다 (아래 절).
 - `core/sources.py` — capture raw clips (Inbox) with sensitivity tag; html→markdown; triage records.
   봇 차단 페이지(`_BOTWALL_MARKERS`)는 `create_source`가 거부한다.
 - `core/claims.py` — claim lifecycle: create (always `unverified`), dedup key, `promote_claim`
@@ -80,6 +81,40 @@ violation fails the test, not a code review.
 
 읽지 않으면 triage를 건너뛰거나, claim마다 돌아야 할 `find_similar_claim`을 생략하거나, claim을
 덜 쪼갠다. 이 실패는 조용해서 lint도 사람도 나중에 못 잡는다.
+
+## 쓰기 락: 프로세스 병렬은 축 단위로만 (2026-08-30)
+
+`wiki mcp` 프로세스가 둘 이상 한 vault에 붙어도 안전하도록, 쓰기 도구 핸들러 14개는
+`core/locking.py`의 프로세스 간 락(`fcntl.flock`)을 잡고 돈다 (`tools.py`의 `_locked`).
+임계구역은 핸들러 **전체**다: 번호 따기(`ids.next_seq`) -> 파일 쓰기 -> 인덱스/로그
+갱신(`core/index.py`) -> `git add` -> `git commit`(`git.commit_vault`). 번호 따기부터
+커밋까지가 한 덩어리여야 하는 이유는 넷이다: 같은 번호 발급, `.git/index.lock` 경쟁,
+스코프 `git add -A`가 다른 프로세스의 미커밋 파일을 내 감사 커밋에 쓸어 담는 것,
+인덱스 read-modify-write의 갱신 유실. 읽기 전용 도구 6개(find_similar_claim,
+list_pending, list_due_reviews, collect_git_session, search_wiki, vault_next_step)는
+락을 잡지 않는다. 읽기는 병렬로 다 된다.
+
+락 파일은 vault 밖(기본 `~/.cache/wiki-toolkit/locks/`, vault 절대경로 해시,
+`WIKI_LOCK_DIR`로 오버라이드)에 있어 자동 커밋에 쓸려 들어갈 수 없고, vault가 git
+repo가 아니어도 동작한다. tempdir가 아닌 이유: macOS와 systemd의 청소가 오래된 파일을
+나이로 지우는데 flock은 타임스탬프를 안 바꿔서, 쥐고 있는 락 파일이 지워지고 다음
+open()이 새 inode로 "둘 다 획득"을 만들 수 있다. 같은 이유로 락 파일을 손으로
+지우지 마라. 락을 쥔 프로세스가 죽으면 커널이 flock을 풀므로 스테일 락 청소는 없다.
+획득은 블로킹이고 기본 30초 타임아웃(`WIKI_WRITE_LOCK_TIMEOUT`)을 넘기면 명확한
+TimeoutError로 죽는다.
+`WIKI_WRITE_LOCK_DISABLE=1`은 경쟁 재현 테스트 전용이다. 운영에서 켜지 않는다.
+
+**병렬화의 대가.** 이 락으로 축(주제 묶음) 여러 개를 서로 다른 프로세스에서 동시에
+ingest할 수 있고, 비싼 부분(클립 통독, 교차검증, 페이지 초안)이 겹쳐 돈다. 대신
+claim id의 축별 연속성이 사라진다. 지금까지는 축 하나가 id 구간 하나였지만(예:
+claim-20260829-161~445가 통째로 축 B였다), 축을 동시에 돌리면 번호가 디스패치 순서대로
+섞인다. 감사 질의를 id 범위로 짜던 스크립트는 `source_refs` 기준으로 바꿔야 한다.
+못 할 일은 아니지만 기존 스크립트를 고쳐야 한다는 것을 알고 시작해야 한다.
+
+**축 하나를 여러 프로세스로 쪼개는 것은 여전히 안 된다.** 병렬은 축과 축 사이에서만
+된다. 한 축 안에서 나누면 클립을 통째로 읽고 인용문을 그대로 옮겨야 하는 계약에
+옮겨 적기 단계가 하나 더 생기고, 2026-08-29에 기계 대조로 잡아낸 전사 오류 147건이
+거기서 다시 생긴다.
 
 ## What is NOT here (constraints by absence)
 
