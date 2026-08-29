@@ -1,6 +1,10 @@
 """claim을 "내 문장 + 원문 인용" 짝으로 묶은 교차검증용 파일을 만든다.
 
     uv run --directory wiki-toolkit python tools/review_packet.py <vault> <claim-id-접두사> <out.md>
+    uv run --directory wiki-toolkit python tools/review_packet.py <vault> source:<id> <out.md>
+
+id가 네 자리로 넘어간 뒤로는 접두사 하나로 한 축의 claim을 못 고른다 (claim-20260829-889부터
+claim-20260829-1031까지가 한 묶음이다). 그때는 `source:source-20260829-016`처럼 source로 고른다.
 
 두 번째 리더에게 넘길 파일이다. vault 파일에서만 읽으므로 claim 문장을 다시 옮겨 적는 단계가 없다.
 """
@@ -23,7 +27,10 @@ def main() -> None:
     rows = []
     for p in sorted((vault / "10_Claims").rglob("claim-*.md")):
         meta, body = schema.parse_doc(p.read_text(encoding="utf-8"))
-        if not meta["id"].startswith(prefix):
+        if prefix.startswith("source:"):
+            if prefix[len("source:"):] not in (meta.get("source_refs") or []):
+                continue
+        elif not meta["id"].startswith(prefix):
             continue
         rows.append((meta, unquote(body).strip()))
 

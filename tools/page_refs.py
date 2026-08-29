@@ -15,7 +15,7 @@ from pathlib import Path
 
 def main() -> None:
     for p in sorted(Path(sys.argv[1]).glob("*.md")):
-        ids = sorted(set(re.findall(r"claim-\d{8}-\d{3}", p.read_text(encoding="utf-8"))))
+        ids = sorted(set(re.findall(r"claim-\d{8}-\d{3,}", p.read_text(encoding="utf-8"))))
         print(f"{p.name}  ({len(ids)}건)")
         print(json.dumps(ids, ensure_ascii=False))
 
