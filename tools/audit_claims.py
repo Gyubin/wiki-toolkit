@@ -13,6 +13,7 @@ from collections import Counter
 from pathlib import Path
 
 from wiki_toolkit import schema
+from wiki_toolkit.core.lint import _ELISION  # 생략 표시 정의는 lint 하나만 갖는다
 
 sys.path.insert(0, str(Path(__file__).parent))
 from check_quotes import fold_map  # noqa: E402  (경로를 넣은 뒤에야 import된다)
@@ -81,11 +82,16 @@ def main() -> None:
         if raw is None:
             miss.append((meta["id"], "source raw 없음"))
             continue
-        if q in raw:
+        # "(...)"는 인용문 안에서 "여기를 건너뛰었다"를 나타내는 표시다. core/lint.py의
+        # quote_not_in_source가 이 기준으로 쪼개 조각별로 찾으므로 여기도 같게 맞춘다.
+        # 안 맞추면 생략 인용문이 전부 "원문에 없음"으로 나와, 멀쩡한 claim을 결함으로 읽게 된다
+        # (2026-08-30에 claim-20260827의 13건이 그렇게 보였다).
+        parts = [p for p in (s.strip() for s in q.split(_ELISION)) if p]
+        if all(p in raw for p in parts):
             continue
-        nq, _ = fold_map(q)
         nr, _ = fold_map(raw)
-        why = "정규화 후 일치(공백이나 기호 차이)" if nq in nr else "원문에 없음"
+        folded_ok = all(fold_map(p)[0] in nr for p in parts)
+        why = "정규화 후 일치(공백이나 기호 차이)" if folded_ok else "원문에 없음"
         miss.append((meta["id"], why))
     print("인용문 없는 claim:", noq or "없음")
     print("인용문 불일치:", miss or "없음")
